@@ -1,0 +1,583 @@
+{
+  "contentId": "classic-v1-ru",
+  "rulesetId": "classic-v1",
+  "language": "ru",
+  "cells": [
+    {
+      "id": 1,
+      "name": "Клетка 1",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 2,
+      "name": "Клетка 2",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 3,
+      "name": "Клетка 3",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 4,
+      "name": "Клетка 4",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 5,
+      "name": "Клетка 5",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 6,
+      "name": "Клетка 6",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 7,
+      "name": "Клетка 7",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 8,
+      "name": "Клетка 8",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 9,
+      "name": "Клетка 9",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 10,
+      "name": "Клетка 10",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 11,
+      "name": "Клетка 11",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 12,
+      "name": "Клетка 12",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 13,
+      "name": "Клетка 13",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 14,
+      "name": "Клетка 14",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 15,
+      "name": "Клетка 15",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 16,
+      "name": "Клетка 16",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 17,
+      "name": "Клетка 17",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 18,
+      "name": "Клетка 18",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 19,
+      "name": "Клетка 19",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 20,
+      "name": "Клетка 20",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 21,
+      "name": "Клетка 21",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 22,
+      "name": "Клетка 22",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 23,
+      "name": "Клетка 23",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 24,
+      "name": "Клетка 24",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 25,
+      "name": "Клетка 25",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 26,
+      "name": "Клетка 26",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 27,
+      "name": "Клетка 27",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 28,
+      "name": "Клетка 28",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 29,
+      "name": "Клетка 29",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 30,
+      "name": "Клетка 30",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 31,
+      "name": "Клетка 31",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 32,
+      "name": "Клетка 32",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 33,
+      "name": "Клетка 33",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 34,
+      "name": "Клетка 34",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 35,
+      "name": "Клетка 35",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 36,
+      "name": "Клетка 36",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 37,
+      "name": "Клетка 37",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 38,
+      "name": "Клетка 38",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 39,
+      "name": "Клетка 39",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 40,
+      "name": "Клетка 40",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 41,
+      "name": "Клетка 41",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 42,
+      "name": "Клетка 42",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 43,
+      "name": "Клетка 43",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 44,
+      "name": "Клетка 44",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 45,
+      "name": "Клетка 45",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 46,
+      "name": "Клетка 46",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 47,
+      "name": "Клетка 47",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 48,
+      "name": "Клетка 48",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 49,
+      "name": "Клетка 49",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 50,
+      "name": "Клетка 50",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 51,
+      "name": "Клетка 51",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 52,
+      "name": "Клетка 52",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 53,
+      "name": "Клетка 53",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 54,
+      "name": "Клетка 54",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 55,
+      "name": "Клетка 55",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 56,
+      "name": "Клетка 56",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 57,
+      "name": "Клетка 57",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 58,
+      "name": "Клетка 58",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 59,
+      "name": "Клетка 59",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 60,
+      "name": "Клетка 60",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 61,
+      "name": "Клетка 61",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 62,
+      "name": "Клетка 62",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 63,
+      "name": "Клетка 63",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 64,
+      "name": "Клетка 64",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 65,
+      "name": "Клетка 65",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 66,
+      "name": "Клетка 66",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 67,
+      "name": "Клетка 67",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 68,
+      "name": "Клетка 68",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 69,
+      "name": "Клетка 69",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 70,
+      "name": "Клетка 70",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 71,
+      "name": "Клетка 71",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    },
+    {
+      "id": 72,
+      "name": "Клетка 72",
+      "sanskrit": "",
+      "shortDescription": "",
+      "fullDescription": "",
+      "reflectionQuestions": []
+    }
+  ]
+}

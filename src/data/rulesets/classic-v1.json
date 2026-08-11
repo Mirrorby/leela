@@ -1,0 +1,38 @@
+{
+  "rulesetId": "classic-v1",
+  "version": 1,
+  "board": {
+    "size": 72,
+    "startingArea": 0,
+    "finishCell": 68,
+    "extendedFinishCell": 72
+  },
+  "birth": {
+    "requiredValue": 6,
+    "entryCell": 1,
+    "description": "Партия начинается в состоянии WAITING_FOR_BIRTH. Пока не выпадет 6, фишка не выходит на поле."
+  },
+  "sixRule": {
+    "grantsExtraRoll": true,
+    "consecutiveLimit": 3,
+    "onLimitReached": {
+      "action": "resetToPositionBeforeSeries",
+      "thenRollAgain": true,
+      "description": "Если подряд выпало 3 шестёрки, фишка возвращается на позицию до начала серии, и засчитывается результат 4-го броска (не шестёрка)."
+    }
+  },
+  "transitionRule": {
+    "appliesOnlyOnExactLanding": true,
+    "description": "Змея или стрела срабатывает только если ход заканчивается ровно на клетке-источнике. Клетки, пройденные транзитом при движении дальше, не учитываются."
+  },
+  "transitions": {
+    "_todo": "Финальный список змей и стрел не утверждён — сверить с физической доской перед production. Ниже заглушка структуры.",
+    "snakes": [],
+    "arrows": []
+  },
+  "beyondFinish": {
+    "_todo": "Правило поведения клеток 69–72 не описано в исходном ТЗ явно — уточнить у заказчика/по физической доске.",
+    "range": [69, 72],
+    "rule": "unknown"
+  }
+}
