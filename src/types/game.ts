@@ -83,6 +83,25 @@ export interface Turn {
   createdAt: string;
 }
 
+export type RollEventType =
+  | 'BIRTH_SUCCESS'
+  | 'BIRTH_FAILED'
+  | 'MOVE'
+  | 'SNAKE'
+  | 'ARROW'
+  | 'EXTRA_ROLL_GRANTED'
+  | 'TRIPLE_SIX_RESET'
+  | 'FINISH'
+  | 'BEYOND_FINISH'
+  | 'REJECTED_GAME_FINISHED'
+  | 'REJECTED_INVALID_ROLL'
+  | 'DUPLICATE_IGNORED';
+
+export interface RollEvent {
+  type: RollEventType;
+  detail?: string;
+}
+
 export interface GameState {
   id: string;
   rulesetId: string;
@@ -93,6 +112,10 @@ export interface GameState {
   currentCell: number;
   isBorn: boolean;
   consecutiveSixes: number;
+  /** Позиция фишки на момент начала текущей серии шестёрок — нужна для сброса по правилу тройной шестёрки. */
+  positionBeforeSixSeries: number;
+  /** Броски текущего незакрытого хода (turn). Закрывается и переносится в turns, когда серия шестёрок обрывается. */
+  currentTurnRolls: Roll[];
   turns: Turn[];
   createdAt: string;
   updatedAt: string;

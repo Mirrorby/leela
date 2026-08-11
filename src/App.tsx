@@ -10,7 +10,7 @@ function App() {
   const content = getContentPack('classic-v1', 'ru');
   const demoGame = createNewGame({
     id: 'demo',
-    rulesetId: 'classic-v1',
+    ruleset,
     request: 'Тестовый запрос',
     diceMode: 'virtual',
   });
