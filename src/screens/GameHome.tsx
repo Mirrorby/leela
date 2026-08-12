@@ -34,6 +34,7 @@ export function GameHome({ session, nav }: ScreenProps) {
         <button onClick={() => nav.push('DiceRoll')}>Бросить кубик</button>
       )}
       <button onClick={() => nav.push('History')}>История ходов</button>
+      <button onClick={() => nav.push('MyGames')}>Мои партии</button>
     </div>
   );
 }

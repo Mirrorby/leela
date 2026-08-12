@@ -3,6 +3,7 @@ import type { ScreenName } from '../navigation/types';
 import type { ScreenProps } from '../navigation/ScreenProps';
 
 import { Splash } from './Splash';
+import { MyGames } from './MyGames';
 import { Intro } from './Intro';
 import { RequestInput } from './RequestInput';
 import { DiceModeSelect } from './DiceModeSelect';
@@ -19,6 +20,7 @@ import { Summary } from './Summary';
 
 export const screens: Record<ScreenName, ComponentType<ScreenProps>> = {
   Splash,
+  MyGames,
   Intro,
   RequestInput,
   DiceModeSelect,

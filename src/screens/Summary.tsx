@@ -1,4 +1,5 @@
 import type { ScreenProps } from '../navigation/ScreenProps';
+import { setActivePersistedGameId } from '../state/persistence';
 
 export function Summary({ session, nav }: ScreenProps) {
   const { game } = session;
@@ -26,6 +27,7 @@ export function Summary({ session, nav }: ScreenProps) {
       )}
       <button
         onClick={() => {
+          setActivePersistedGameId(null);
           session.reset();
           nav.resetTo('Splash');
         }}

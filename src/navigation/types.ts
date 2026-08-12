@@ -3,6 +3,7 @@
 
 export type ScreenName =
   | 'Splash'
+  | 'MyGames'
   | 'Intro'
   | 'RequestInput'
   | 'DiceModeSelect'

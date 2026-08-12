@@ -103,3 +103,44 @@
   flex-direction: column;
   gap: 6px;
 }
+
+/* Этап 4: экран "Мои партии" */
+.game-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.game-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.game-list-item strong {
+  color: var(--text-h);
+  font-size: 15px;
+}
+
+.game-list-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.game-list-actions button {
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.screen button.danger {
+  background: transparent;
+  border-color: #c0392b;
+  color: #c0392b;
+}
