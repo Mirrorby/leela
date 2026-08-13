@@ -1,15 +1,26 @@
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { afterCellCard } from '../navigation/flow';
 
-export function CellCard({ session, nav }: ScreenProps) {
+/**
+ * CellCard работает в двух режимах:
+ *  - обычный (после хода): показывает game.currentCell, кнопка "Далее" ведёт
+ *    дальше по флоу партии (afterCellCard);
+ *  - "подглядывание" (params.peek === true, params.cellId задан): открыт
+ *    тапом по произвольной клетке на доске (GameHome). Показывает контент
+ *    ЛЮБОЙ клетки, ничего не меняя в игре, кнопка — просто "Назад".
+ */
+export function CellCard({ session, nav, params }: ScreenProps) {
   const { game } = session;
   if (!game) return null;
 
-  const cell = session.cellById(game.currentCell);
+  const isPeek = params?.peek === true && typeof params.cellId === 'number';
+  const cellId = isPeek ? (params!.cellId as number) : game.currentCell;
+
+  const cell = session.cellById(cellId);
 
   return (
     <div className="screen screen-cell-card">
-      <h1>Клетка {game.currentCell}</h1>
+      <h1>Клетка {cellId}</h1>
       {cell ? (
         <>
           <h2>
@@ -27,7 +38,12 @@ export function CellCard({ session, nav }: ScreenProps) {
       ) : (
         <p className="muted">Контент для этой клетки ещё не заполнен (заглушка).</p>
       )}
-      <button onClick={() => nav.push(afterCellCard(session.lastEvents))}>Далее</button>
+
+      {isPeek ? (
+        <button onClick={() => nav.pop()}>Назад</button>
+      ) : (
+        <button onClick={() => nav.push(afterCellCard(session.lastEvents))}>Далее</button>
+      )}
     </div>
   );
 }

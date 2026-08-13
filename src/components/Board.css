@@ -1,0 +1,169 @@
+.board-wrap {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.board-stage {
+  position: relative;
+  width: 100%;
+  /* aspect-ratio задаётся инлайном из viewBox доски (см. Board.tsx),
+     это и есть требование "viewBox уже квадратный — хорошо масштабируется":
+     контейнер держит форму на любой ширине без обрезки. */
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.board-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.board-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* --- Клетки: тап-зоны и подсветка --- */
+
+.board-cell {
+  cursor: default;
+}
+
+.board-cell[role='button'] {
+  cursor: pointer;
+}
+
+.board-cell-hit {
+  transition: fill 0.15s ease;
+}
+
+.board-cell[role='button']:hover .board-cell-hit,
+.board-cell[role='button']:focus-visible .board-cell-hit {
+  fill: rgba(255, 255, 255, 0.14);
+}
+
+.board-cell[role='button']:active .board-cell-hit {
+  fill: rgba(255, 255, 255, 0.24);
+}
+
+.board-cell[role='button']:focus-visible {
+  outline: none;
+}
+
+.board-cell[role='button']:focus-visible .board-cell-hit {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+/* Особая зона (69–72): пунктирная рамка + мягкое сияние поверх готовой
+   художественной заливки доски (та уже золотит весь верхний ряд 65–72,
+   этот слой явно маркирует именно 69–72 как отдельную зону). */
+.board-cell--special .board-cell-hit {
+  cursor: pointer;
+}
+
+/* --- Текущая клетка --- */
+
+.board-current-ring {
+  fill: none;
+  stroke: var(--board-current-ring);
+  stroke-width: 3;
+  opacity: 0.85;
+  pointer-events: none;
+  animation: board-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes board-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    stroke-width: 2.5;
+  }
+  50% {
+    opacity: 0.95;
+    stroke-width: 3.5;
+  }
+}
+
+/* --- Фишка --- */
+
+.board-token {
+  pointer-events: none;
+  transition: transform var(--board-token-duration, 480ms) var(--board-token-ease, ease-in-out);
+}
+
+.board-token--step {
+  --board-token-duration: 480ms;
+  --board-token-ease: ease-in-out;
+}
+
+.board-token--leap {
+  --board-token-duration: 620ms;
+  --board-token-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.board-token-shadow {
+  fill: rgba(0, 0, 0, 0.28);
+  transform: translate(1.5px, 3px);
+}
+
+.board-token-core {
+  fill: var(--board-token);
+  stroke: var(--board-token-core);
+  stroke-width: 2.5;
+}
+
+.board-token--leap .board-token-core {
+  animation: board-token-glow 620ms ease-out;
+}
+
+@keyframes board-token-glow {
+  0% {
+    filter: none;
+  }
+  40% {
+    filter: drop-shadow(0 0 6px var(--board-special-line));
+  }
+  100% {
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-token {
+    transition-duration: 0.01ms !important;
+  }
+  .board-token--leap .board-token-core {
+    animation: none;
+  }
+  .board-current-ring {
+    animation: none;
+  }
+}
+
+/* --- Отзывчивость: телефон / планшет / десктоп ---
+   viewBox доски держит пропорции сам, здесь только ограничиваем
+   максимальную ширину, чтобы на больших экранах доска не расползалась
+   во весь экран и оставалась удобной для тапа. */
+
+@media (min-width: 640px) {
+  .board-wrap {
+    max-width: 620px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .board-wrap {
+    max-width: 680px;
+  }
+}
