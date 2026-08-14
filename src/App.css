@@ -4,11 +4,17 @@
 .app-shell {
   max-width: 480px;
   margin: 0 auto;
-  min-height: 100vh;
-  padding: 24px 20px 40px;
+  /* Этап 6: --app-height подтягивается из viewportStableHeight Telegram
+     (высота меняется живьём при появлении клавиатуры/разворачивании окна —
+     см. useTelegramViewport), вне Telegram — обычный 100dvh. */
+  min-height: var(--app-height);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  /* Safe area: отступы под чёлку/шторку iOS внутри Telegram, env() —
+     в обычном браузере. Низ кнопки "бросить кубик" не уезжает под системный UI. */
+  padding: calc(24px + var(--safe-area-top)) calc(20px + var(--safe-area-right)) calc(40px + var(--safe-area-bottom))
+    calc(20px + var(--safe-area-left));
 }
 
 .screen {
@@ -61,7 +67,7 @@
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
   cursor: pointer;
   transition: opacity 0.2s;
 }

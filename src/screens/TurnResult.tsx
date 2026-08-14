@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import type { RollEventType } from '../types/game';
 import { afterTurnResult } from '../navigation/flow';
+import { hapticImpact } from '../telegram/haptics';
 
 const EVENT_LABELS: Record<RollEventType, string> = {
   BIRTH_SUCCESS: 'Фишка родилась!',
@@ -19,6 +21,11 @@ const EVENT_LABELS: Record<RollEventType, string> = {
 
 export function TurnResult({ session, nav }: ScreenProps) {
   const { lastEvents, lastRollValue, lastMove } = session;
+
+  // Фишка "приземлилась" — лёгкий отклик. Только на маунт экрана (не на
+  // каждый ре-рендер), поэтому пустой массив зависимостей.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => hapticImpact('medium'), []);
 
   return (
     <div className="screen screen-turn-result">

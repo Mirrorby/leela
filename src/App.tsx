@@ -8,6 +8,10 @@ import {
 } from './state/persistence';
 import type { NavigationActions, ScreenEntry, ScreenName } from './navigation/types';
 import { screens } from './screens';
+import { captureInitData, initTelegramApp } from './telegram/telegramAdapter';
+import { useTelegramTheme } from './telegram/useTelegramTheme';
+import { useTelegramViewport } from './telegram/useTelegramViewport';
+import { useTelegramBackButton } from './telegram/useTelegramBackButton';
 import './App.css';
 
 // Этап 3: минимальный UI-каркас, собственный стек экранов (react-router
@@ -19,6 +23,15 @@ function App() {
   const session = useGameSession();
   const [stack, setStack] = useState<ScreenEntry[]>([{ name: 'Splash' }]);
   const [hydrated, setHydrated] = useState(false);
+
+  // Этап 6: Telegram Web App SDK. Вне Telegram все три хука — no-op, а
+  // initTelegramApp()/captureInitData() просто не находят window.Telegram.
+  useEffect(() => {
+    initTelegramApp();
+    captureInitData();
+  }, []);
+  useTelegramTheme();
+  useTelegramViewport();
 
   // Восстановление активной партии. Выполняется один раз при монтировании —
   // до этого момента ничего не рендерим, чтобы не мигнуть Splash перед
@@ -59,6 +72,10 @@ function App() {
 
   const nav: NavigationActions = { push, replace, pop, resetTo };
   const current = stack[stack.length - 1];
+
+  // Системная кнопка "назад" Telegram зеркалит тот же pop(), что и обычная
+  // навигация в приложении — видна ровно когда есть куда возвращаться.
+  useTelegramBackButton(stack.length > 1, pop);
 
   // Снимок сессии на каждое изменение партии/экрана/результата броска — это
   // и есть "закрыл вкладку посреди хода — восстановилось точно там же":

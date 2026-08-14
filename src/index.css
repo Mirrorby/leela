@@ -1,15 +1,42 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
+  /* Базовые цвета приложения. Каждый обёрнут в var(--tg-theme-…, fallback):
+     внутри Telegram useTelegramTheme() пишет --tg-theme-* на этот же
+     documentElement (см. src/telegram/useTelegramTheme.ts) и тема Telegram
+     побеждает; в обычном браузере --tg-theme-* не установлены — используется
+     обычный fallback ниже (light/dark по prefers-color-scheme, как раньше). */
+  --text: var(--tg-theme-hint-color, #6b6375);
+  --text-h: var(--tg-theme-text-color, #08060d);
+  --bg: var(--tg-theme-bg-color, #fff);
   --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
+  --code-bg: var(--tg-theme-secondary-bg-color, #f4f3ec);
+  --accent: var(--tg-theme-button-color, #aa3bff);
+  --accent-fg: var(--tg-theme-button-text-color, #fff);
   --accent-bg: rgba(170, 59, 255, 0.1);
   --accent-border: rgba(170, 59, 255, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  /* Этап 5: доска */
+  --board-frame: #ffffff;
+  --board-cell: #ffffff;
+  --board-cell-alt: #f6f3fb;
+  --board-line: var(--border);
+  --board-special-fill: #fdf3da;
+  --board-special-line: #c99a34;
+  --board-special-glow: rgba(201, 154, 52, 0.35);
+  --board-current-ring: var(--accent);
+  --board-token: var(--accent);
+  --board-token-core: #ffffff;
+
+  /* Этап 6: safe area / вьюпорт Telegram, с фоллбеком на обычный CSS для
+     браузера (env() поддерживается везде, где есть чёлка/жесты). Пишутся
+     в px из src/telegram/useTelegramViewport.ts, когда открыто в Telegram. */
+  --safe-area-top: var(--tg-safe-area-top, env(safe-area-inset-top, 0px));
+  --safe-area-bottom: var(--tg-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-area-left: var(--tg-safe-area-left, env(safe-area-inset-left, 0px));
+  --safe-area-right: var(--tg-safe-area-right, env(safe-area-inset-right, 0px));
+  --app-height: var(--tg-viewport-stable-height, 100dvh);
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -32,17 +59,29 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
+    --text: var(--tg-theme-hint-color, #9ca3af);
+    --text-h: var(--tg-theme-text-color, #f3f4f6);
+    --bg: var(--tg-theme-bg-color, #16171d);
     --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
+    --code-bg: var(--tg-theme-secondary-bg-color, #1f2028);
+    --accent: var(--tg-theme-button-color, #c084fc);
+    --accent-fg: var(--tg-theme-button-text-color, #fff);
     --accent-bg: rgba(192, 132, 252, 0.15);
     --accent-border: rgba(192, 132, 252, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+    --board-frame: #1c1d25;
+    --board-cell: #1c1d25;
+    --board-cell-alt: #20222c;
+    --board-line: var(--border);
+    --board-special-fill: #2a2210;
+    --board-special-line: #e8c268;
+    --board-special-glow: rgba(232, 194, 104, 0.3);
+    --board-current-ring: var(--accent);
+    --board-token: var(--accent);
+    --board-token-core: #16171d;
   }
 
   #social .button-icon {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
+import { hapticImpact } from '../telegram/haptics';
 
 export function DiceRoll({ session, nav }: ScreenProps) {
   const { game } = session;
@@ -17,6 +18,7 @@ export function DiceRoll({ session, nav }: ScreenProps) {
   const isBirthRoll = !game.isBorn;
 
   const doRoll = (value?: number) => {
+    hapticImpact('light');
     session.roll(value);
     nav.push('TurnResult');
   };
