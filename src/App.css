@@ -1,36 +1,53 @@
-/* Этап 3: минимальный UI-каркас без финальной графики поля.
-   Используем CSS-переменные из index.css (тема light/dark уже настроена там). */
+/* Новая визуальная тема (мистический тёмный фиолет + золото). Общие
+   CSS-переменные — в index.css. Здесь — компоновка экранов и общие
+   элементы интерфейса (кнопки-таблетки, карточки, поля ввода). */
 
 .app-shell {
   max-width: 480px;
   margin: 0 auto;
-  /* Этап 6: --app-height подтягивается из viewportStableHeight Telegram
-     (высота меняется живьём при появлении клавиатуры/разворачивании окна —
-     см. useTelegramViewport), вне Telegram — обычный 100dvh. */
+  width: 100%;
   min-height: var(--app-height);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  /* Safe area: отступы под чёлку/шторку iOS внутри Telegram, env() —
-     в обычном браузере. Низ кнопки "бросить кубик" не уезжает под системный UI. */
-  padding: calc(24px + var(--safe-area-top)) calc(20px + var(--safe-area-right)) calc(40px + var(--safe-area-bottom))
+  position: relative;
+  padding: calc(20px + var(--safe-area-top)) calc(20px + var(--safe-area-right)) calc(24px + var(--safe-area-bottom))
     calc(20px + var(--safe-area-left));
 }
 
 .screen {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
+/* Экраны онбординга/меню: контент по вертикали в центре экрана, а не
+   прижат к верху — так и выглядит референс (Splash, Intro, RequestInput,
+   DiceModeSelect и т.п.). GameHome в этот класс НЕ входит — там своя,
+   более плотная компоновка (см. .screen-game-home ниже). */
+.screen-centered {
+  justify-content: center;
+  align-items: stretch;
+  text-align: center;
+  gap: 20px;
+}
+
+.screen-centered h1 {
+  font-size: 30px;
+}
+
+.screen-centered p {
+  color: var(--text);
+  line-height: 1.55;
+}
+
 .screen h1 {
-  font-size: 22px;
   color: var(--text-h);
   margin: 0 0 4px;
 }
 
 .screen h2 {
-  font-size: 18px;
   color: var(--text-h);
   margin: 0;
 }
@@ -48,8 +65,8 @@
 
 .screen .muted {
   color: var(--text);
-  opacity: 0.75;
-  font-size: 15px;
+  opacity: 0.85;
+  font-size: 14px;
 }
 
 .screen ul,
@@ -59,64 +76,93 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  text-align: left;
 }
+
+/* --- Кнопки-таблетки (pill), как в референсе --- */
 
 .screen button {
   font: inherit;
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--accent);
-  color: var(--accent-fg);
+  font-weight: 600;
+  padding: 14px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--gold-soft);
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition:
+    background 0.2s,
+    opacity 0.2s;
+  backdrop-filter: blur(6px);
 }
 
 .screen button:hover {
-  opacity: 0.85;
+  background: var(--pill-bg-hover);
 }
 
 .screen button:disabled {
-  background: var(--border);
-  color: var(--text);
+  opacity: 0.4;
   cursor: not-allowed;
-  opacity: 0.6;
+}
+
+/* Основная кнопка действия (например "Начать", "Бросить кубик") — чуть
+   ярче остальных, залита золотом, а не прозрачным стеклом. */
+.screen button.primary {
+  background: var(--gold-soft);
+  color: var(--accent-fg);
+  border-color: transparent;
+}
+
+.screen button.primary:hover {
+  background: var(--gold);
+}
+
+.screen button.danger {
+  background: transparent;
+  border-color: rgba(224, 100, 100, 0.5);
+  color: #e08a8a;
 }
 
 .screen textarea,
 .screen select {
   font: inherit;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-h);
-  resize: vertical;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--pill-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cream);
+}
+
+.screen textarea::placeholder {
+  color: rgba(241, 228, 201, 0.4);
 }
 
 .dice-manual-input {
   display: flex;
   gap: 10px;
   align-items: center;
+  justify-content: center;
 }
 
 .reflection {
-  padding: 12px 14px;
-  border-radius: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
   background: var(--accent-bg);
   border: 1px solid var(--accent-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  text-align: left;
 }
 
-/* Этап 4: экран "Мои партии" */
+/* --- "Мои партии" --- */
 .game-list {
   list-style: none;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  text-align: left;
 }
 
 .game-list-item {
@@ -125,8 +171,9 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
+  border-radius: 14px;
+  border: 1px solid var(--pill-border);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .game-list-item strong {
@@ -141,12 +188,213 @@
 }
 
 .game-list-actions button {
-  padding: 8px 12px;
-  font-size: 14px;
+  padding: 8px 14px;
+  font-size: 13px;
 }
 
-.screen button.danger {
+/* --- Главный игровой экран: компактная шапка + доска почти во весь
+   экран + кубик снизу по центру + иконка "домой" всегда доступна --- */
+
+.screen-game-home {
+  gap: 12px;
+}
+
+.game-home-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.icon-button {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--gold-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  padding: 0;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.icon-button:hover {
+  background: var(--pill-bg-hover);
+}
+
+.current-cell-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+
+.current-cell-info .cell-number {
+  font-size: 13px;
+  color: var(--gold);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.current-cell-info .cell-snippet {
+  font-size: 14px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-home-board {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.game-home-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Кнопка-кубик: минималистичная иконка, не текстовая pill-кнопка */
+.dice-fab {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--gold-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition:
+    transform 0.15s,
+    background 0.2s;
+}
+
+.dice-fab:hover {
+  background: var(--pill-bg-hover);
+}
+
+.dice-fab:active {
+  transform: scale(0.94);
+}
+
+.dice-fab svg {
+  width: 34px;
+  height: 34px;
+}
+
+.game-home-links {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.game-home-links button {
   background: transparent;
-  border-color: #c0392b;
-  color: #c0392b;
+  border: none;
+  padding: 4px 6px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* --- Экран броска кубика: большой центральный кубик --- */
+
+.dice-roll-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.dice-roll-die {
+  width: 120px;
+  height: 120px;
+  border-radius: 28px;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: transform 0.15s;
+}
+
+.dice-roll-die:active {
+  transform: scale(0.95);
+}
+
+.dice-roll-die svg {
+  width: 64px;
+  height: 64px;
+}
+
+.dice-roll-die.rolling svg {
+  animation: dice-spin 0.5s ease-in-out;
+}
+
+@keyframes dice-spin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.15);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+.dice-faces {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.dice-face-button {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--gold-soft);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dice-face-button:hover {
+  background: var(--pill-bg-hover);
+}
+
+.dice-face-button.selected {
+  background: var(--gold-soft);
+  color: var(--accent-fg);
+  border-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dice-roll-die.rolling svg {
+    animation: none;
+  }
 }

@@ -79,6 +79,10 @@ export interface TelegramWebApp {
   HapticFeedback: TelegramHapticFeedback;
   onEvent: (event: TelegramEventName, cb: () => void) => void;
   offEvent: (event: TelegramEventName, cb: () => void) => void;
+  /** Красит системный header Telegram вокруг Mini App. Принимает hex-цвет. */
+  setHeaderColor?: (color: string) => void;
+  /** Красит фон под safe area (например, за системными кнопками). */
+  setBackgroundColor?: (color: string) => void;
 }
 
 declare global {

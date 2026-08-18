@@ -6,7 +6,7 @@ export function RequestInput({ session, nav }: ScreenProps) {
   const canContinue = value.trim().length > 0;
 
   return (
-    <div className="screen screen-request-input">
+    <div className="screen screen-centered">
       <h1>Твой запрос</h1>
       <p>С чем ты хочешь поработать в этой партии?</p>
       <textarea
@@ -16,6 +16,7 @@ export function RequestInput({ session, nav }: ScreenProps) {
         placeholder="Например: хочу понять, что мешает мне двигаться дальше..."
       />
       <button
+        className="primary"
         disabled={!canContinue}
         onClick={() => {
           session.setRequest(value.trim());

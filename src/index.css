@@ -1,135 +1,102 @@
 :root {
-  /* Базовые цвета приложения. Каждый обёрнут в var(--tg-theme-…, fallback):
-     внутри Telegram useTelegramTheme() пишет --tg-theme-* на этот же
-     documentElement (см. src/telegram/useTelegramTheme.ts) и тема Telegram
-     побеждает; в обычном браузере --tg-theme-* не установлены — используется
-     обычный fallback ниже (light/dark по prefers-color-scheme, как раньше). */
-  --text: var(--tg-theme-hint-color, #6b6375);
-  --text-h: var(--tg-theme-text-color, #08060d);
-  --bg: var(--tg-theme-bg-color, #fff);
-  --border: #e5e4e7;
-  --code-bg: var(--tg-theme-secondary-bg-color, #f4f3ec);
-  --accent: var(--tg-theme-button-color, #aa3bff);
-  --accent-fg: var(--tg-theme-button-text-color, #fff);
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Этап "новый дизайн": фиксированная мистическая тема (тёмный
+     фиолет -> маджента, золото), НЕ зависит от prefers-color-scheme и не
+     подстраивается под тему Telegram — наоборот, useTelegramTheme.ts
+     передаёт ЭТИ цвета в Telegram (setHeaderColor/setBackgroundColor),
+     чтобы chrome вокруг приложения тоже был фиолетовым. Единый бренд
+     важнее адаптации под чужую тему — так и в референсном приложении. */
+  --bg-top: #241033;
+  --bg-mid: #3a1652;
+  --bg-bottom: #a72cc0;
+  --gold: #d9b36a;
+  --gold-soft: #e8c97a;
+  --cream: #f1e4c9;
+  --text: rgba(241, 228, 201, 0.72);
+  --text-h: var(--gold-soft);
+  --border: rgba(217, 179, 106, 0.28);
+  --code-bg: rgba(255, 255, 255, 0.06);
+  --accent: var(--gold-soft);
+  --accent-fg: #241033;
+  --accent-bg: rgba(217, 179, 106, 0.14);
+  --accent-border: rgba(217, 179, 106, 0.4);
+  --shadow: rgba(0, 0, 0, 0.35) 0 10px 25px -8px;
 
-  /* Этап 5: доска */
-  --board-frame: #ffffff;
-  --board-cell: #ffffff;
-  --board-cell-alt: #f6f3fb;
-  --board-line: var(--border);
-  --board-special-fill: #fdf3da;
-  --board-special-line: #c99a34;
-  --board-special-glow: rgba(201, 154, 52, 0.35);
-  --board-current-ring: var(--accent);
-  --board-token: var(--accent);
-  --board-token-core: #ffffff;
+  /* Плашки/кнопки — полупрозрачное "стекло" поверх фона, как в референсе */
+  --pill-bg: rgba(255, 255, 255, 0.1);
+  --pill-bg-hover: rgba(255, 255, 255, 0.16);
+  --pill-border: rgba(217, 179, 106, 0.4);
 
-  /* Этап 6: safe area / вьюпорт Telegram, с фоллбеком на обычный CSS для
-     браузера (env() поддерживается везде, где есть чёлка/жесты). Пишутся
-     в px из src/telegram/useTelegramViewport.ts, когда открыто в Telegram. */
+  /* Доска (этап 5, перекрашена под новую тему) */
+  --board-special-glow: rgba(232, 201, 122, 0.35);
+  --board-current-ring: var(--gold-soft);
+  --board-token: var(--gold-soft);
+  --board-token-core: #241033;
+
+  /* Safe area / вьюпорт Telegram (этап 6), фоллбек на обычный CSS вне Telegram */
   --safe-area-top: var(--tg-safe-area-top, env(safe-area-inset-top, 0px));
   --safe-area-bottom: var(--tg-safe-area-bottom, env(safe-area-inset-bottom, 0px));
   --safe-area-left: var(--tg-safe-area-left, env(safe-area-inset-left, 0px));
   --safe-area-right: var(--tg-safe-area-right, env(safe-area-inset-right, 0px));
   --app-height: var(--tg-viewport-stable-height, 100dvh);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --sans: 'Segoe UI', system-ui, Roboto, sans-serif;
+  --heading: 'Segoe UI', system-ui, Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
+  font: 17px/145% var(--sans);
+  letter-spacing: 0.15px;
+  color-scheme: dark;
   color: var(--text);
-  background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: var(--tg-theme-hint-color, #9ca3af);
-    --text-h: var(--tg-theme-text-color, #f3f4f6);
-    --bg: var(--tg-theme-bg-color, #16171d);
-    --border: #2e303a;
-    --code-bg: var(--tg-theme-secondary-bg-color, #1f2028);
-    --accent: var(--tg-theme-button-color, #c084fc);
-    --accent-fg: var(--tg-theme-button-text-color, #fff);
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, #6b1c82 70%, var(--bg-bottom) 100%);
+}
 
-    --board-frame: #1c1d25;
-    --board-cell: #1c1d25;
-    --board-cell-alt: #20222c;
-    --board-line: var(--border);
-    --board-special-fill: #2a2210;
-    --board-special-line: #e8c268;
-    --board-special-glow: rgba(232, 194, 104, 0.3);
-    --board-current-ring: var(--accent);
-    --board-token: var(--accent);
-    --board-token-core: #16171d;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+/* Мандала — фиксированный декоративный слой позади всего интерфейса.
+   background-attachment: fixed, чтобы не скроллилась вместе с контентом. */
+body {
+  background-image: var(--bg-mandala-url), linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, #6b1c82 70%, var(--bg-bottom) 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-size: 130% auto, 100% 100%;
+  background-position: top center, top center;
+  background-attachment: fixed, fixed;
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  width: 100%;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
 }
 
-body {
-  margin: 0;
-}
-
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-h);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
+  font-size: 28px;
+  letter-spacing: -0.3px;
   margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
 }
+
+h2 {
+  font-size: 20px;
+  line-height: 130%;
+  margin: 0 0 8px;
+}
+
 p {
   margin: 0;
 }
@@ -143,7 +110,7 @@ code,
 }
 
 code {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);

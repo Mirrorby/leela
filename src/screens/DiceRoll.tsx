@@ -1,16 +1,22 @@
 import { useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { hapticImpact } from '../telegram/haptics';
+import { DiceIcon } from '../components/icons';
+
+const ROLL_ANIMATION_MS = 500;
 
 export function DiceRoll({ session, nav }: ScreenProps) {
   const { game } = session;
-  const [manualValue, setManualValue] = useState(6);
+  const [selectedFace, setSelectedFace] = useState(6);
+  const [rolling, setRolling] = useState(false);
 
   if (!game) {
     return (
-      <div className="screen screen-dice-roll">
+      <div className="screen screen-centered">
         <p>Партия не найдена.</p>
-        <button onClick={() => nav.resetTo('Splash')}>В начало</button>
+        <button className="primary" onClick={() => nav.resetTo('Splash')}>
+          В начало
+        </button>
       </div>
     );
   }
@@ -23,27 +29,47 @@ export function DiceRoll({ session, nav }: ScreenProps) {
     nav.push('TurnResult');
   };
 
-  return (
-    <div className="screen screen-dice-roll">
-      <h1>{isBirthRoll ? 'Бросок на рождение' : 'Бросок кубика'}</h1>
-      <p className="muted">
-        {isBirthRoll ? 'Нужна шестёрка, чтобы фишка появилась на поле.' : `Текущая клетка: ${game.currentCell}`}
-      </p>
+  const handleVirtualTap = () => {
+    if (rolling) return;
+    setRolling(true);
+    hapticImpact('light');
+    window.setTimeout(() => doRoll(), ROLL_ANIMATION_MS);
+  };
 
-      {game.diceMode === 'virtual' ? (
-        <button onClick={() => doRoll()}>Бросить кубик</button>
-      ) : (
-        <div className="dice-manual-input">
-          <select value={manualValue} onChange={(e) => setManualValue(Number(e.target.value))}>
+  return (
+    <div className="screen">
+      <div className="dice-roll-stage">
+        <h1>{isBirthRoll ? 'Бросок на рождение' : 'Бросок кубика'}</h1>
+        <p className="muted">
+          {isBirthRoll ? 'Нужна шестёрка, чтобы фишка появилась на поле.' : `Текущая клетка: ${game.currentCell}`}
+        </p>
+
+        {game.diceMode === 'virtual' ? (
+          <button
+            className={`dice-roll-die${rolling ? ' rolling' : ''}`}
+            aria-label="Бросить кубик"
+            disabled={rolling}
+            onClick={handleVirtualTap}
+          >
+            <DiceIcon />
+          </button>
+        ) : (
+          <div className="dice-faces">
             {[1, 2, 3, 4, 5, 6].map((v) => (
-              <option key={v} value={v}>
+              <button
+                key={v}
+                className={`dice-face-button${selectedFace === v ? ' selected' : ''}`}
+                aria-label={`Грань ${v}`}
+                onClick={() => setSelectedFace(v)}
+              >
                 {v}
-              </option>
+              </button>
             ))}
-          </select>
-          <button onClick={() => doRoll(manualValue)}>Подтвердить бросок</button>
-        </div>
-      )}
+          </div>
+        )}
+
+        {game.diceMode === 'physical' && <button onClick={() => doRoll(selectedFace)}>Подтвердить бросок</button>}
+      </div>
     </div>
   );
 }
