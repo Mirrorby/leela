@@ -1,0 +1,17 @@
+name = "leela-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# D1: значение database_id взять из Cloudflare Dashboard → Workers & Pages → D1 →
+# база "leela" → вкладка Settings, поле "Database ID". Замени плейсхолдер ниже.
+[[d1_databases]]
+binding = "DB"
+database_name = "leela"
+database_id = "33e79106-5d2e-46ae-b666-0b6d22bf33fe"
+
+[vars]
+ENVIRONMENT = "production"
+
+# Секреты (BOT_TOKEN, WEBHOOK_SECRET) сюда НЕ пишем — они добавляются
+# отдельно через Cloudflare Dashboard → Workers & Pages → leela-worker →
+# Settings → Variables and Secrets → Add → Encrypt, после первого деплоя.

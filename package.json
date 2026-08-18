@@ -1,27 +1,16 @@
 {
-  "name": "leela",
+  "name": "leela-worker",
+  "version": "0.1.0",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
-    "test": "vitest run",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "echo \"(тесты воркера появятся в этапе 7.3+)\" && exit 0"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.4",
-    "oxlint": "^1.75.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "wrangler": "^3.78.0",
+    "typescript": "^5.5.4",
+    "@cloudflare/workers-types": "^4.20240925.0"
   }
 }

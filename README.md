@@ -1,30 +1,41 @@
-# Этап 6 — файлы для вставки в github.dev
+# Этап 7.1–7.2 — каркас Cloudflare Worker
 
-## Новые файлы (создать папку src/telegram)
-- src/telegram/telegramAdapter.ts       — единственная точка входа в window.Telegram
-- src/telegram/telegramAdapter.test.ts  — юнит-тесты (Telegram есть / Telegram нет)
-- src/telegram/useTelegramTheme.ts      — тема -> CSS-переменные --tg-theme-*
-- src/telegram/useTelegramViewport.ts   — высота вьюпорта + safe area -> CSS-переменные
-- src/telegram/useTelegramBackButton.ts — системная BackButton -> тот же pop()
-- src/telegram/haptics.ts               — safe-обёртка над HapticFeedback
+## Куда класть файлы в репозитории (github.dev)
 
-## Изменённые файлы (заменить целиком)
-- index.html            — добавлен <script src="telegram-web-app.js">
-- src/App.tsx            — подключение всех Telegram-хуков
-- src/App.css            — safe-area отступы, --app-height, --accent-fg на кнопках
-- src/index.css          — --tg-theme-* с фоллбеками + ПЕРЕСТАВЛЕНЫ переменные
-                            --board-* этапа 5 (в репозитории их не оказалось —
-                            видимо, при вставке файлов этапа 5 этот файл
-                            заменили не полностью; без них доска рисуется
-                            без цветов)
-- src/screens/DiceRoll.tsx    — hapticImpact('light') на бросок
-- src/screens/TurnResult.tsx  — hapticImpact('medium') на "приземление"
-- src/screens/Splash.tsx      — приветствие по имени, если открыто в Telegram
-                                 (initDataUnsafe, только для отображения)
+```
+leela/
+├── worker/
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── wrangler.toml
+│   └── src/
+│       └── index.ts
+└── .github/
+    └── workflows/
+        └── deploy-worker.yml
+```
 
-## Важно
-Проверить index.css после вставки: там снова должны появиться строки
---board-frame / --board-cell / --board-special-* и т.д. — без них Board.tsx
-из этапа 5 отрисуется без палитры.
+Существующие файлы фронтенда (`src/`, `.github/workflows/deploy.yml` для Pages
+и т.д.) не трогаем — `worker/` живёт рядом как отдельный npm-проект.
 
-Подробности — в комментариях внутри самих файлов.
+## Порядок действий (см. пошаговую карточку в чате)
+
+1. Создать D1-базу и таблицу `games` через Cloudflare Dashboard.
+2. Вставить `database_id` в `worker/wrangler.toml`.
+3. Создать Cloudflare API Token и добавить его в GitHub как секрет
+   `CLOUDFLARE_API_TOKEN`.
+4. Закоммитить файлы из этого архива в `main` — сработает
+   `deploy-worker.yml` и создаст воркер `leela-worker` на Cloudflare.
+5. После первого успешного деплоя — добавить секреты `BOT_TOKEN` и
+   `WEBHOOK_SECRET` через Dashboard → leela-worker → Settings → Variables.
+6. Проверить `https://leela-worker.<твой-субдомен>.workers.dev/api/v1/health`
+   — должно вернуть `{"ok": true, "db": "reachable", ...}`.
+
+## Что дальше (этапы 7.3–7.6, отдельными сообщениями)
+
+- 7.3: перенос `gameEngine.ts` / `diceEngine.ts` / `transitionEngine.ts` в
+  `worker/src` (общий код с фронтом, без изменений логики).
+- 7.4: валидация `initData` по HMAC на каждый запрос `/api/v1/*`.
+- 7.5: эндпойнты `games` (create/list/get/rolls) с идемпотентностью по
+  `clientEventId`.
+- 7.6: `/telegram/webhook` — ответ на `/start` кнопкой открытия Mini App.
