@@ -398,3 +398,66 @@
     animation: none;
   }
 }
+
+/* --- Кубик и переключатель режима теперь живут прямо на GameHome
+   (редизайн, п.1) — .dice-fab уже определён выше, здесь только то, что
+   добавилось: спин на самой FAB-кнопке, панель выбора грани для
+   физического режима и всплывающее сообщение об отклонённом броске. --- */
+
+.dice-fab.rolling svg {
+  animation: dice-spin 0.5s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dice-fab.rolling svg {
+    animation: none;
+  }
+}
+
+.dice-physical-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.dice-pick-cancel {
+  background: transparent;
+  border: none;
+  padding: 2px 6px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.game-home-flash {
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  color: var(--gold-soft);
+  text-align: center;
+  animation: flash-in 0.15s ease-out;
+}
+
+@keyframes flash-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.game-home-links {
+  flex-wrap: wrap;
+}
+
+.game-home-links button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

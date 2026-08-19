@@ -14,6 +14,30 @@ import { useTelegramViewport } from './telegram/useTelegramViewport';
 import { useTelegramBackButton } from './telegram/useTelegramBackButton';
 import './App.css';
 
+// Редизайн (этап 7): шесть экранов флоу броска (DiceRoll, TurnResult,
+// CellCard, TransitionEvent, ExtraRollPrompt, TripleSixReset) убраны из
+// ScreenName и больше никогда не пушатся в стек — но старая сохранённая
+// партия в localStorage могла быть записана ДО редизайна с одним из этих
+// имён как "текущий экран". TS-тип на рантайм-значение из JSON.parse не
+// влияет, поэтому normalizeScreenName подстраховывает восстановление:
+// любое незнакомое имя экрана превращается в GameHome — экран партии,
+// который теперь и так вмещает в себя весь этот флоу.
+const KNOWN_SCREENS = new Set<ScreenName>([
+  'Splash',
+  'MyGames',
+  'Intro',
+  'RequestInput',
+  'DiceModeSelect',
+  'GameHome',
+  'History',
+  'FinishScreen',
+  'Summary',
+]);
+
+function normalizeScreenName(name: string): ScreenName {
+  return KNOWN_SCREENS.has(name as ScreenName) ? (name as ScreenName) : 'GameHome';
+}
+
 // Этап 3: минимальный UI-каркас, собственный стек экранов (react-router
 // сознательно не используется). Этап 4: партия переживает закрытие вкладки —
 // на каждое изменение сессии/экрана пишем снимок в localStorage, при
@@ -42,7 +66,7 @@ function App() {
       const record = loadPersistedGame(activeId);
       if (record) {
         session.restore(record);
-        setStack([{ name: record.screen }]);
+        setStack([{ name: normalizeScreenName(record.screen) }]);
       } else {
         // activeGameId ссылается на запись, которой больше нет (удалена
         // вручную или JSON повреждён) — просто забываем про неё.

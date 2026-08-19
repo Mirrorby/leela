@@ -1,36 +1,39 @@
 :root {
-  /* Этап "новый дизайн": фиксированная мистическая тема (тёмный
-     фиолет -> маджента, золото), НЕ зависит от prefers-color-scheme и не
-     подстраивается под тему Telegram — наоборот, useTelegramTheme.ts
-     передаёт ЭТИ цвета в Telegram (setHeaderColor/setBackgroundColor),
-     чтобы chrome вокруг приложения тоже был фиолетовым. Единый бренд
-     важнее адаптации под чужую тему — так и в референсном приложении. */
-  --bg-top: #241033;
-  --bg-mid: #3a1652;
-  --bg-bottom: #a72cc0;
-  --gold: #d9b36a;
-  --gold-soft: #e8c97a;
-  --cream: #f1e4c9;
-  --text: rgba(241, 228, 201, 0.72);
+  /* Тёплая тема (редизайн этапа 7, п.2): янтарно-оранжевая палитра вместо
+     прежней фиолетово-золотой. Как и раньше, тема фиксированная, НЕ
+     зависит от prefers-color-scheme и не подстраивается под тему
+     Telegram — наоборот, useTelegramTheme.ts передаёт ЭТИ цвета в Telegram
+     (setHeaderColor/setBackgroundColor), чтобы chrome вокруг приложения
+     тоже был тёплым. Единый бренд важнее адаптации под чужую тему. */
+  --bg-top: #3d1f0a;
+  --bg-mid: #6b2e0e;
+  --bg-accent: #c24e12;
+  --bg-bottom: #f0801a;
+  --gold: #e8a23d;
+  --gold-soft: #f2b44d;
+  --cream: #fbe8ce;
+  --text: rgba(251, 232, 206, 0.72);
   --text-h: var(--gold-soft);
-  --border: rgba(217, 179, 106, 0.28);
+  --border: rgba(242, 180, 77, 0.28);
   --code-bg: rgba(255, 255, 255, 0.06);
   --accent: var(--gold-soft);
-  --accent-fg: #241033;
-  --accent-bg: rgba(217, 179, 106, 0.14);
-  --accent-border: rgba(217, 179, 106, 0.4);
+  --accent-fg: #3d1f0a;
+  --accent-bg: rgba(242, 180, 77, 0.14);
+  --accent-border: rgba(242, 180, 77, 0.4);
   --shadow: rgba(0, 0, 0, 0.35) 0 10px 25px -8px;
 
   /* Плашки/кнопки — полупрозрачное "стекло" поверх фона, как в референсе */
   --pill-bg: rgba(255, 255, 255, 0.1);
   --pill-bg-hover: rgba(255, 255, 255, 0.16);
-  --pill-border: rgba(217, 179, 106, 0.4);
+  --pill-border: rgba(242, 180, 77, 0.4);
 
-  /* Доска (этап 5, перекрашена под новую тему) */
-  --board-special-glow: rgba(232, 201, 122, 0.35);
+  /* Доска (этап 5; палитра обновлена в этапе 7 — сама разметка доски 9×8
+     с чакра-колонкой ещё впереди, см. следующий подэтап) */
+  --board-special-glow: rgba(242, 180, 77, 0.35);
+  --board-special-line: var(--gold-soft);
   --board-current-ring: var(--gold-soft);
   --board-token: var(--gold-soft);
-  --board-token-core: #241033;
+  --board-token-core: #3d1f0a;
 
   /* Safe area / вьюпорт Telegram (этап 6), фоллбек на обычный CSS вне Telegram */
   --safe-area-top: var(--tg-safe-area-top, env(safe-area-inset-top, 0px));
@@ -57,13 +60,13 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, #6b1c82 70%, var(--bg-bottom) 100%);
+  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, var(--bg-accent) 70%, var(--bg-bottom) 100%);
 }
 
 /* Мандала — фиксированный декоративный слой позади всего интерфейса.
    background-attachment: fixed, чтобы не скроллилась вместе с контентом. */
 body {
-  background-image: var(--bg-mandala-url), linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, #6b1c82 70%, var(--bg-bottom) 100%);
+  background-image: var(--bg-mandala-url), linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, var(--bg-accent) 70%, var(--bg-bottom) 100%);
   background-repeat: no-repeat, no-repeat;
   background-size: 130% auto, 100% 100%;
   background-position: top center, top center;

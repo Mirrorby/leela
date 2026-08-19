@@ -37,7 +37,7 @@ export interface LastMove {
  */
 export function useGameSession() {
   const [request, setRequest] = useState('');
-  const [diceMode, setDiceMode] = useState<DiceMode>('virtual');
+  const [diceMode, setDiceModeState] = useState<DiceMode>('virtual');
   const [game, setGame] = useState<GameState | null>(null);
   const [lastEvents, setLastEvents] = useState<RollEvent[]>([]);
   const [lastRollValue, setLastRollValue] = useState<number | null>(null);
@@ -47,6 +47,18 @@ export function useGameSession() {
   const activeRulesetId = game?.rulesetId ?? RULESET_ID;
   const ruleset = getRuleset(activeRulesetId);
   const content = getContentPack(activeRulesetId, LANGUAGE);
+
+  // setDiceMode обслуживает два разных момента:
+  //  - ДО создания партии (экран DiceModeSelect) — там game ещё null,
+  //    startGame() ниже подхватит значение из diceMode-состояния;
+  //  - В ЛЮБОЙ момент во время партии (переключатель на GameHome, редизайн
+  //    этапа 7) — тогда нужно также переписать game.diceMode, иначе
+  //    следующий бросок продолжит использовать старый режим (значение
+  //    хранится в самой GameState, а не только в этом хуке).
+  const setDiceMode = useCallback((mode: DiceMode) => {
+    setDiceModeState(mode);
+    setGame((prev) => (prev ? { ...prev, diceMode: mode, updatedAt: new Date().toISOString() } : prev));
+  }, []);
 
   // diceMode передаём явным overrides, а не читаем из состояния: setDiceMode
   // в React асинхронный, а DiceModeSelect зовёт setDiceMode(mode) и startGame()
@@ -93,7 +105,11 @@ export function useGameSession() {
       setLastRollValue(diceValue);
       setLastMove(move);
 
-      return { game: result.game, events: result.events, value: diceValue };
+      // move возвращается синхронно (а не только через lastMove-состояние),
+      // чтобы вызывающий код (оркестрация модалки в GameHome) мог сразу же,
+      // без ожидания ре-рендера, узнать, был ли "перелёт" по змее/стреле —
+      // от этого зависит, сколько фаз анимации доски нужно проиграть.
+      return { game: result.game, events: result.events, value: diceValue, move };
     },
     [game, ruleset]
   );
