@@ -11,7 +11,7 @@ export interface BoardCellCoordinate {
 
 export interface BoardCoordinates {
   rulesetId: string;
-  /** SVG viewBox целиком строкой, как в исходном файле: "0 0 736 816". */
+  /** SVG viewBox целиком строкой, как в исходном файле: "0 0 816 736". */
   viewBox: string;
   cells: BoardCellCoordinate[];
 }
