@@ -131,12 +131,23 @@ export function GameHome({ session, nav }: ScreenProps) {
     setDiceStage('face');
 
     after(FACE_HOLD_MS, () => {
-      if (!move) {
+      // ВАЖНО (баг, найден при визуальной проверке): движок НЕ добавляет
+      // событие MOVE для успешного рождения (см. gameEngine.ts — рождение
+      // пушит только BIRTH_SUCCESS), поэтому move здесь будет null даже
+      // когда фишка реально встала на клетку 1. !move — это "фишка
+      // физически не сдвинулась" ТОЛЬКО для остальных случаев (неудачное
+      // рождение, отклонённый бросок) — рождение обрабатываем отдельной
+      // веткой ДО общего "ничего не произошло" сценария.
+      const isBirth = hasEvent(events, 'BIRTH_SUCCESS');
+
+      if (!move && !isBirth) {
         // Рождение не удалось / бросок отклонён движком — фишка не
         // двигалась, показывать модалку с клеткой нечего: коротко
         // сообщаем, что произошло, и возвращаем кубик в исходное состояние.
+        // Грань (faceValue) НЕ сбрасываем — п.3 редизайна: последнее
+        // выпавшее значение остаётся на кубике до следующего броска, даже
+        // если сам бросок оказался "неудачным" (не 6 при рождении и т.п.).
         setDiceStage('idle');
-        setFaceValue(null);
         const label = (Object.keys(FLASH_EVENT_LABELS) as RollEventType[])
           .map((type) => (hasEvent(events, type) ? FLASH_EVENT_LABELS[type] : undefined))
           .find(Boolean);
@@ -144,13 +155,15 @@ export function GameHome({ session, nav }: ScreenProps) {
         return;
       }
 
-      setDiceStage('moving');
-      const hasVia = move.landedCell !== move.finalCell;
-      const boardAnimMs = BOARD_STEP_DURATION_MS + (hasVia ? BOARD_LEAP_DURATION_MS : 0);
+      // У рождения нет "пути" по доске (фишки ещё не было на поле) —
+      // анимировать нечего, сразу открываем модалку. У обычного хода путь
+      // есть (move !== null) — даём доске время доехать/перелететь.
+      const hasVia = move !== null && move.landedCell !== move.finalCell;
+      const boardAnimMs = move ? BOARD_STEP_DURATION_MS + (hasVia ? BOARD_LEAP_DURATION_MS : 0) : 0;
 
+      setDiceStage('moving');
       after(boardAnimMs, () => {
         setDiceStage('idle');
-        setFaceValue(null);
         hapticImpact('light');
         if (hasEvent(events, 'TRIPLE_SIX_RESET')) {
           setSheet({ kind: 'triple-six', cellId: updatedGame.currentCell });
@@ -202,7 +215,12 @@ export function GameHome({ session, nav }: ScreenProps) {
     after(60, handleDiceTap);
   };
 
-  const dicePips = diceStage === 'face' && faceValue ? faceValue : undefined;
+  // п.3 редизайна: последняя выпавшая грань остаётся на кубике до
+  // следующего броска (и в виртуальном, и в физическом режиме) — не
+  // сбрасываем в "generic" иконку сразу после того, как открылась модалка
+  // с результатом. Единственный момент, когда грань скрыта, — сам спин
+  // виртуального кубика (анимация вращения ещё идёт, значение не выбрано).
+  const dicePips = diceStage === 'rolling' ? undefined : (faceValue ?? undefined);
   const diceLabel = !game.isBorn ? 'Бросить кубик на рождение' : 'Бросить кубик';
 
   return (
@@ -248,7 +266,7 @@ export function GameHome({ session, nav }: ScreenProps) {
                   aria-label={`Грань ${v}`}
                   onClick={() => handleFaceSelect(v)}
                 >
-                  {v}
+                  <DiceIcon value={v} />
                 </button>
               ))}
             </div>
@@ -329,11 +347,11 @@ export function GameHome({ session, nav }: ScreenProps) {
                   <button className="primary" onClick={rollAgain}>
                     Выпала 6 — бросить ещё раз
                   </button>
-                  <button onClick={closeSheet}>Закрыть</button>
+                  <button onClick={closeSheet}>Продолжить</button>
                 </>
               ) : (
                 <button className="primary" onClick={closeSheet}>
-                  Закрыть
+                  Продолжить
                 </button>
               )}
             </div>

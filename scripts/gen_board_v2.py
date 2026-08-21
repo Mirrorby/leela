@@ -66,13 +66,6 @@ def cubic_bezier(p0, c1, c2, p3, t):
     return x, y
 
 
-def quad_bezier(p0, c, p1, t):
-    mt = 1 - t
-    x = mt**2 * p0[0] + 2 * mt * t * c[0] + t**2 * p1[0]
-    y = mt**2 * p0[1] + 2 * mt * t * c[1] + t**2 * p1[1]
-    return x, y
-
-
 def cell_xy(cell_id: int):
     """Боустрофедон: клетка 1 — левый нижний угол, дальше змейкой вверх.
     Чётные (от низа) ряды идут слева направо, нечётные — справа налево —
@@ -183,63 +176,61 @@ def snake_path(x1, y1, x2, y2, color, dark_color):
     return f'<g opacity="0.92">{"".join(segs)}{head}</g>'
 
 
-def arrow_path(x1, y1, x2, y2, color):
-    """Минималистичный силуэт стрелы: слегка изогнутое древко, гранёный
-    наконечник у клетки-назначения и небольшое оперение у клетки-источника —
-    тонкая декоративная линия, не объёмный рисунок (п.6)."""
+def arrow_path(x1, y1, x2, y2, color, color_dark):
+    """Силуэт стрелы: строго прямое древко (настоящая лучная стрела летит
+    по прямой — никакой дуги), гранёный наконечник-ромб у клетки-назначения
+    и оперение из трёх пёрышек у клетки-источника."""
     dx, dy = x2 - x1, y2 - y1
     length = math.hypot(dx, dy)
     ux, uy = dx / length, dy / length
-    nx, ny = -uy, ux
-    amp = min(14, length * 0.06)
+    px, py = -uy, ux
 
-    inset = 15
+    inset = 16
     p0 = (x1 + ux * inset, y1 + uy * inset)
     p1 = (x2 - ux * inset, y2 - uy * inset)
-    c = ((p0[0] + p1[0]) / 2 + nx * amp, (p0[1] + p1[1]) / 2 + ny * amp)
 
-    n = 10
-    pts = [quad_bezier(p0, c, p1, i / n) for i in range(n + 1)]
-    shaft = "".join(
-        f'<line x1="{pts[i][0]:.1f}" y1="{pts[i][1]:.1f}" x2="{pts[i+1][0]:.1f}" y2="{pts[i+1][1]:.1f}" '
-        f'stroke="{color}" stroke-width="2.6" stroke-linecap="round" />'
-        for i in range(n)
-    )
-
-    # Наконечник — на конце древка, развёрнут по касательной последнего сегмента.
-    tx, ty = pts[-1]
-    tx2, ty2 = pts[-2]
-    tux, tuy = tx - tx2, ty - ty2
-    tlen = math.hypot(tux, tuy) or 1
-    tux, tuy = tux / tlen, tuy / tlen
-    tpx, tpy = -tuy, tux
-    head_len, head_w = 13, 6.5
-    tip = (tx + tux * head_len * 0.55, ty + tuy * head_len * 0.55)
-    hbase_l = (tx - tux * head_len * 0.45 + tpx * head_w, ty - tuy * head_len * 0.45 + tpy * head_w)
-    hbase_r = (tx - tux * head_len * 0.45 - tpx * head_w, ty - tuy * head_len * 0.45 - tpy * head_w)
+    head_len, head_w = 15, 5.5
+    tip = (p1[0] + ux * head_len * 0.5, p1[1] + uy * head_len * 0.5)
+    head_back = (p1[0] - ux * head_len * 0.5, p1[1] - uy * head_len * 0.5)
+    hbase_l = (head_back[0] + px * head_w, head_back[1] + py * head_w)
+    hbase_r = (head_back[0] - px * head_w, head_back[1] - py * head_w)
+    # Ромбовидный (гранёный) наконечник — не просто треугольник: у него
+    # есть "плечи" чуть шире середины древка, ближе к настоящему лучному.
+    shaft_w = 2.6
+    should_l = (head_back[0] + px * shaft_w, head_back[1] + py * shaft_w)
+    should_r = (head_back[0] - px * shaft_w, head_back[1] - py * shaft_w)
     head = (
         f'<polygon points="{tip[0]:.1f},{tip[1]:.1f} {hbase_l[0]:.1f},{hbase_l[1]:.1f} '
-        f'{hbase_r[0]:.1f},{hbase_r[1]:.1f}" fill="{color}" />'
+        f'{should_l[0]:.1f},{should_l[1]:.1f} {should_r[0]:.1f},{should_r[1]:.1f} '
+        f'{hbase_r[0]:.1f},{hbase_r[1]:.1f}" fill="{color}" stroke="{color_dark}" stroke-width="0.6" />'
     )
 
-    # Оперение — у начала древка (клетка-источник), две короткие "перья"-чёрточки.
-    fx, fy = pts[0]
-    fx2, fy2 = pts[1]
-    fux, fuy = fx2 - fx, fy2 - fy
-    flen = math.hypot(fux, fuy) or 1
-    fux, fuy = fux / flen, fuy / flen
-    fpx, fpy = -fuy, fux
-    feather_len = 7
-    f1_tip = (fx - fux * feather_len + fpx * 4.5, fy - fuy * feather_len + fpy * 4.5)
-    f2_tip = (fx - fux * feather_len - fpx * 4.5, fy - fuy * feather_len - fpy * 4.5)
-    fletching = (
-        f'<line x1="{fx:.1f}" y1="{fy:.1f}" x2="{f1_tip[0]:.1f}" y2="{f1_tip[1]:.1f}" '
-        f'stroke="{color}" stroke-width="2" stroke-linecap="round" />'
-        f'<line x1="{fx:.1f}" y1="{fy:.1f}" x2="{f2_tip[0]:.1f}" y2="{f2_tip[1]:.1f}" '
-        f'stroke="{color}" stroke-width="2" stroke-linecap="round" />'
+    # Древко — прямая линия от p0 до точки, где начинается наконечник.
+    shaft_mid = ((should_l[0] + should_r[0]) / 2, (should_l[1] + should_r[1]) / 2)
+    shaft = (
+        f'<line x1="{p0[0]:.1f}" y1="{p0[1]:.1f}" x2="{shaft_mid[0]:.1f}" y2="{shaft_mid[1]:.1f}" '
+        f'stroke="{color}" stroke-width="{shaft_w:.1f}" stroke-linecap="butt" />'
     )
 
-    return f'<g opacity="0.92">{fletching}{shaft}{head}</g>'
+    # Оперение у p0 (клетка-источник): три пёрышка веером, как у настоящей стрелы.
+    feather_len, feather_w = 11, 5
+    fbase = (p0[0] - ux * 1, p0[1] - uy * 1)
+
+    def feather(offset_scale, spread):
+        side = (fbase[0] + px * offset_scale, fbase[1] + py * offset_scale)
+        tip_f = (side[0] - ux * feather_len + px * spread, side[1] - uy * feather_len + py * spread)
+        mid = (
+            side[0] - ux * feather_len * 0.5 + px * (spread * 0.5 + feather_w * (1 if spread >= 0 else -1)),
+            side[1] - uy * feather_len * 0.5 + py * (spread * 0.5 + feather_w * (1 if spread >= 0 else -1)),
+        )
+        return (
+            f'<path d="M{side[0]:.1f},{side[1]:.1f} Q{mid[0]:.1f},{mid[1]:.1f} {tip_f[0]:.1f},{tip_f[1]:.1f} '
+            f'L{side[0]:.1f},{side[1]:.1f} Z" fill="{color}" opacity="0.95" />'
+        )
+
+    fletching = feather(2.4, 5) + feather(-2.4, -5) + feather(0, 0)
+
+    return f'<g opacity="0.95">{fletching}{shaft}{head}</g>'
 
 
 def build_svg() -> str:
@@ -311,7 +302,7 @@ def build_svg() -> str:
         x1, y1 = COORDS[frm]
         x2, y2 = COORDS[to]
         parts.append(f'<!-- arrow {frm} -> {to} -->')
-        parts.append(arrow_path(x1, y1, x2, y2, "#4E8B57"))
+        parts.append(arrow_path(x1, y1, x2, y2, "#4E8B57", "#274A2C"))
 
     # Цифры клеток — последним проходом, поверх заливки И поверх черновых
     # змей/стрел, чтобы номер клетки был читаем всегда.

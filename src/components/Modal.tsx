@@ -11,11 +11,13 @@ export interface ModalProps {
 }
 
 /**
- * Modal — единая нижняя шторка поверх GameHome. Ничего не знает об играх,
- * бросках или клетках — только "открыт/закрыт" и содержимое. Вся
- * оркестрация (что показать и когда) остаётся в GameHome: бросок кубика,
- * подглядывание клетки, тройная шестёрка — всё это разные наборы children,
- * переданные в один и тот же Modal.
+ * Modal — единое диалоговое окно поверх GameHome, по центру экрана (не
+ * нижняя шторка — правка после ревью: карточка снизу читалась как часть
+ * доски и визуально путала). Ничего не знает об играх, бросках или
+ * клетках — только "открыт/закрыт" и содержимое. Вся оркестрация (что
+ * показать и когда) остаётся в GameHome: бросок кубика, подглядывание
+ * клетки, тройная шестёрка — всё это разные наборы children, переданные в
+ * один и тот же Modal.
  */
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
   useEffect(() => {
@@ -37,7 +39,6 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-grabber" aria-hidden="true" />
         {(title || onClose) && (
           <div className="modal-header">
             {title ? <div className="modal-title">{title}</div> : <div />}

@@ -47,7 +47,12 @@ export interface TelegramWebAppInitDataUnsafe {
   [key: string]: unknown;
 }
 
-type TelegramEventName = 'themeChanged' | 'viewportChanged' | 'backButtonClicked';
+type TelegramEventName =
+  | 'themeChanged'
+  | 'viewportChanged'
+  | 'backButtonClicked'
+  | 'safeAreaChanged'
+  | 'contentSafeAreaChanged';
 
 export interface TelegramBackButton {
   isVisible: boolean;

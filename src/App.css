@@ -192,6 +192,133 @@
   font-size: 13px;
 }
 
+/* --- История ходов (переоформлена — п.6 правок) --- */
+
+.history-count {
+  margin: -6px 0 0;
+}
+
+.history-list {
+  /* !important только для padding: у общего правила ".screen ol" выше по
+     файлу та же специфичность (два класса) и явный padding-left — без
+     этого он выигрывал бы по каскаду, несмотря на источник ниже. */
+  list-style: none;
+  padding: 0 !important;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--pill-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.history-index {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  color: var(--gold-soft);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-move {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--heading);
+}
+
+.history-birth {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold-soft);
+}
+
+.history-cell {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-cell--final {
+  color: var(--gold-soft);
+  font-size: 19px;
+}
+
+.history-arrow {
+  color: var(--gold);
+  opacity: 0.7;
+  font-size: 15px;
+}
+
+.history-transition-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.history-transition-badge.snake {
+  background: rgba(179, 64, 43, 0.18);
+  border: 1px solid rgba(179, 64, 43, 0.4);
+  color: #e08a72;
+}
+
+.history-transition-badge.arrow {
+  background: rgba(78, 139, 87, 0.18);
+  border: 1px solid rgba(78, 139, 87, 0.4);
+  color: #8fcb9a;
+}
+
+.history-rolls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.history-roll-pip {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--text);
+  opacity: 0.75;
+  font-size: 11px;
+  font-family: var(--mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* --- Главный игровой экран: компактная шапка + доска почти во весь
    экран + кубик снизу по центру + иконка "домой" всегда доступна --- */
 
@@ -369,18 +496,22 @@
 }
 
 .dice-face-button {
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: 16px;
   border: 1px solid var(--pill-border);
   background: var(--pill-bg);
   color: var(--gold-soft);
-  font-size: 20px;
-  font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+}
+
+.dice-face-button svg {
+  width: 36px;
+  height: 36px;
 }
 
 .dice-face-button:hover {
