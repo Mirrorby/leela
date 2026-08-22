@@ -71,10 +71,15 @@ function closeCurrentTurn(game: GameState, startCell: number, landedCell: number
   game.currentTurnRolls = [];
 }
 
-let rollCounter = 0;
-function nextRollId(): string {
-  rollCounter += 1;
-  return `roll-${rollCounter}`;
+// ВАЖНО (правка перед переносом на сервер): раньше здесь был модульный
+// mutable-счётчик (`let rollCounter = 0`) — в браузере он живёт, пока
+// открыта вкладка, но в Cloudflare Worker гарантий на переиспользование
+// изолята между запросами нет: счётчик может обнулиться посреди партии, и
+// два разных броска получат одинаковый id ("roll-1" дважды). Считаем id
+// из уже имеющегося состояния партии — детерминированно, без скрытого
+// состояния модуля, и одинаково работает в браузере и в Worker'е.
+function nextRollId(game: GameState): string {
+  return `roll-${game.turns.length}-${game.currentTurnRolls.length + 1}`;
 }
 
 /**
@@ -107,7 +112,7 @@ export function processRoll(
     turns: [...game.turns],
   };
   const events: RollEvent[] = [];
-  const roll: Roll = { id: nextRollId(), clientEventId, value, createdAt: new Date().toISOString() };
+  const roll: Roll = { id: nextRollId(next), clientEventId, value, createdAt: new Date().toISOString() };
   const startCellOfTurn = next.currentTurnRolls.length === 0 ? next.currentCell : next.positionBeforeSixSeries;
 
   // Начало новой серии бросков (первый бросок хода) — запоминаем позицию для возможного сброса по тройной шестёрке.
@@ -147,78 +152,80 @@ export function processRoll(
   // --- Обычный ход (фишка уже "родилась") ---
   const isSix = value === 6;
 
-  if (isSix) {
-    next.consecutiveSixes += 1;
-  } else {
-    next.consecutiveSixes = 0;
-  }
+  // ПРАВИЛО ШЕСТЁРОК (уточнено по реальным правилам, см. памятку):
+  // "Сгорание" касается СТРОГО комбинации из ровно N (по умолчанию 3)
+  // шестёрок подряд, за которыми сразу следует НЕ шестёрка — тогда именно
+  // эти N шестёрок отменяются целиком (фишка откатывается на позицию до
+  // начала серии), и засчитывается только следующий (не-шестёрочный) бросок.
+  // НО если вместо этого выпадает ЕЩЁ одна (N+1-я) шестёрка подряд —
+  // сгорание отменяется насовсем для этой серии, и ВСЕ броски (включая уже
+  // сделанные N шестёрок) считаются кумулятивно как обычное движение.
+  // Пример из правил: 6-6-6-3 → откат, идёт только 3 клетки. Но
+  // 6-6-6-6-4 → сгорания нет вообще, идёт все 28 клеток (6+6+6+6+4).
+  // Поэтому проверяем НЕ "трижды подряд" (>=), а "ровно N до этого броска,
+  // и вот прямо сейчас — не шестёрка" (===) — иначе четвёртая шестёрка
+  // сама эту проверку не пережила бы.
+  const priorConsecutiveSixes = next.consecutiveSixes;
+  const burnsSixSeries = priorConsecutiveSixes === ruleset.sixRule.consecutiveLimit && !isSix;
 
-  // Правило серии шестёрок: если подряд выпало consecutiveLimit шестёрок —
-  // сброс к позиции до начала серии, фишка НЕ двигается по этому броску,
-  // серия обнуляется, но ход не закрывается — следующий бросок будет
-  // обработан как обычное движение от восстановленной позиции.
-  if (isSix && next.consecutiveSixes >= ruleset.sixRule.consecutiveLimit) {
-    events.push({ type: 'TRIPLE_SIX_RESET' });
+  if (burnsSixSeries) {
     next.currentCell = next.positionBeforeSixSeries;
-    next.consecutiveSixes = 0;
-    next.updatedAt = new Date().toISOString();
-    return { game: next, events };
+    events.push({ type: 'TRIPLE_SIX_RESET' });
   }
+  next.consecutiveSixes = isSix ? priorConsecutiveSixes + 1 : 0;
 
   const rawTarget = next.currentCell + value;
-  let landedCell: number;
-  let finalCell: number;
-
-  if (rawTarget === ruleset.board.finishCell) {
-    landedCell = rawTarget;
-    finalCell = rawTarget;
-    next.currentCell = rawTarget;
-    next.status = 'FINISHED';
-    events.push({ type: 'MOVE' }, { type: 'FINISH' });
-    closeCurrentTurn(next, startCellOfTurn, landedCell, finalCell);
-    next.updatedAt = new Date().toISOString();
-    return { game: next, events };
-  }
-
-  if (rawTarget > ruleset.board.finishCell && rawTarget <= ruleset.board.extendedFinishCell) {
-    // Диапазон 69–72: точное поведение не утверждено в ruleset (beyondFinish.rule === 'unknown').
-    // Пока просто перемещаем фишку без завершения партии — уточнить при финальной сверке правил.
-    landedCell = rawTarget;
-    finalCell = rawTarget;
-    next.currentCell = rawTarget;
-    events.push({ type: 'MOVE' }, { type: 'BEYOND_FINISH', detail: 'beyondFinish rule not finalized in ruleset' });
-    closeCurrentTurn(next, startCellOfTurn, landedCell, finalCell);
-    next.updatedAt = new Date().toISOString();
-    return { game: next, events };
-  }
 
   if (rawTarget > ruleset.board.extendedFinishCell) {
-    // Перелёт дальше доступного поля — ход "сгорает", фишка остаётся на месте
-    // (стандартное для змей-и-лестниц правило "точного попадания"). Допущение,
-    // требует подтверждения вместе с beyondFinish.rule.
-    landedCell = next.currentCell;
-    finalCell = next.currentCell;
+    // Перелёт дальше последней клетки доски (72) — ход "сгорает", фишка
+    // остаётся на месте (правило "точного попадания"). Это же правило,
+    // без каких-либо доп. условий, естественным образом ограничивает
+    // клетки 69–71 малыми числами (см. beyondFinish в ruleset) — не нужно
+    // отдельно проверять "с 69 можно только 1-2-3": любой больший бросок
+    // просто закономерно превышает 72.
     events.push({ type: 'MOVE', detail: 'overshoot: stayed in place' });
     if (isSix && ruleset.sixRule.grantsExtraRoll) {
       events.push({ type: 'EXTRA_ROLL_GRANTED' });
     } else {
-      closeCurrentTurn(next, startCellOfTurn, landedCell, finalCell);
+      closeCurrentTurn(next, startCellOfTurn, next.currentCell, next.currentCell);
     }
     next.updatedAt = new Date().toISOString();
     return { game: next, events };
   }
 
-  // Обычное движение в пределах доски.
-  landedCell = rawTarget;
+  // Обычное движение — включая заход в клетки 69–72 (зона "за 68, но
+  // ещё на доске"): это НЕ особый случай, а такое же обычное движение,
+  // только к нему применяются переходы ниже (в т.ч. клетка 72 — это и
+  // есть "длинная змея", отправляющая обратно на 51 — обычная запись в
+  // transitions.snakes, отдельного кода не требует).
+  const landedCell = rawTarget;
   events.push({ type: 'MOVE' });
+  if (landedCell > ruleset.board.finishCell) {
+    events.push({ type: 'BEYOND_FINISH', detail: 'clarified: small-number correction zone before true finish' });
+  }
 
-  finalCell = resolveTransition(ruleset, landedCell);
+  const finalCell = resolveTransition(ruleset, landedCell);
   if (finalCell !== landedCell) {
     const isSnake = ruleset.transitions.snakes.some((t) => t.from === landedCell);
     events.push({ type: isSnake ? 'SNAKE' : 'ARROW' });
   }
 
   next.currentCell = finalCell;
+
+  // Финиш — если ИТОГОВАЯ клетка (после применения перехода, если он был)
+  // равна финишной, партия завершена. Проверяем именно finalCell, а не
+  // landedCell — так, чтобы попадание на финиш ЧЕРЕЗ стрелу/змею тоже
+  // засчитывалось как победа (подтверждено: "если игрок становится на 68
+  // даже по стреле — это в любом случае финиш"). Раньше здесь была
+  // реальная ошибка: финиш проверялся только по прямому броску, до
+  // применения перехода — из-за этого стрела 54→68 не завершала партию.
+  if (finalCell === ruleset.board.finishCell) {
+    next.status = 'FINISHED';
+    events.push({ type: 'FINISH' });
+    closeCurrentTurn(next, startCellOfTurn, landedCell, finalCell);
+    next.updatedAt = new Date().toISOString();
+    return { game: next, events };
+  }
 
   if (isSix && ruleset.sixRule.grantsExtraRoll) {
     events.push({ type: 'EXTRA_ROLL_GRANTED' });

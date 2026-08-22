@@ -81,21 +81,46 @@ export function useGameSession() {
     [ruleset, request, diceMode]
   );
 
+  // ВАЖНО (правка перед переносом на сервер, этап 7.3): виртуальный бросок
+  // сейчас генерируется ЗДЕСЬ, на клиенте (rollVirtualDice() внутри roll()
+  // ниже) — это временно и нарочно вынесено в отдельную async-обёртку
+  // getVirtualRollValue(), а не разбросано по коду roll(). Когда движок
+  // переедет на Worker, доверять клиентскому Math.random() будет нельзя
+  // (модифицированный клиент может слать любое "выгодное" число) — вместо
+  // этого getVirtualRollValue() должен будет дождаться ответа сервера
+  // (POST /api/v1/games/:id/roll без value → сервер сам бросает и
+  // возвращает результат). Название и async-сигнатура уже сегодня такие,
+  // какими будут после переноса — поменяется только тело функции, вызывающий
+  // код (roll() ниже, GameHome) трогать не придётся.
+  const getVirtualRollValue = useCallback(async (): Promise<number> => {
+    return rollVirtualDice();
+  }, []);
+
   const roll = useCallback(
-    (value?: number) => {
+    async (value?: number) => {
       if (!game) {
         throw new Error('roll() вызван до startGame()');
       }
-      const diceValue = value ?? rollVirtualDice();
-      const prevCell = game.currentCell;
+      const diceValue = value ?? (await getVirtualRollValue());
       const result = processRoll(game, ruleset, diceValue, nextClientEventId());
 
       const moveEvent = result.events.find((e) => e.type === 'MOVE');
       const isOvershoot = moveEvent?.detail?.startsWith('overshoot') ?? false;
+      // ВАЖНО (баг, найден при сверке правила сгорания трёх шестёрок):
+      // точка, ОТКУДА реально считается это движение, — НЕ обязательно
+      // «где фишка визуально стояла до броска» (game.currentCell). Если
+      // этим самым броском сгорела серия из трёх шестёрок, движок внутри
+      // себя откатывает позицию к game.positionBeforeSixSeries и считает
+      // landedCell уже ОТТУДА — раньше здесь бралось предыдущее
+      // game.currentCell, что для сгоревшей серии давало неверную (более
+      // не относящуюся к реальности) арифметику и включало анимацию
+      // "перелёта" там, где на самом деле никакого перехода не было.
+      const burnedSixSeries = result.events.some((e) => e.type === 'TRIPLE_SIX_RESET');
+      const moveBaseCell = burnedSixSeries ? game.positionBeforeSixSeries : game.currentCell;
       const move: LastMove | null = moveEvent
         ? {
-            fromCell: prevCell,
-            landedCell: isOvershoot ? prevCell : prevCell + diceValue,
+            fromCell: moveBaseCell,
+            landedCell: isOvershoot ? moveBaseCell : moveBaseCell + diceValue,
             finalCell: result.game.currentCell,
           }
         : null;
@@ -111,7 +136,7 @@ export function useGameSession() {
       // от этого зависит, сколько фаз анимации доски нужно проиграть.
       return { game: result.game, events: result.events, value: diceValue, move };
     },
-    [game, ruleset]
+    [game, ruleset, getVirtualRollValue]
   );
 
   // Восстанавливает сессию из сохранённого снимка (App.tsx вызывает это при

@@ -4,7 +4,7 @@ import type { RollEvent, RollEventType } from '../types/game';
 import { Board, BOARD_LEAP_DURATION_MS, BOARD_STEP_DURATION_MS } from '../components/Board';
 import { Modal } from '../components/Modal';
 import { CellContent } from '../components/CellContent';
-import { getBoardCoordinates, getBoardImageSrc } from '../game/boardCoordinates';
+import { getBoardCoordinates, getBoardImageSrc, getBoardOverlaySrc } from '../game/boardCoordinates';
 import { DiceIcon } from '../components/icons';
 import { hapticImpact, hapticNotification } from '../telegram/haptics';
 
@@ -17,12 +17,19 @@ const FLASH_MS = 1800;
 
 // Значимые события, которые стоит показать бейджем в модалке результата —
 // подмножество RollEventType: MOVE слишком очевиден (клетка и так видна),
-// а TRIPLE_SIX_RESET/EXTRA_ROLL_GRANTED/FINISH обрабатываются отдельно ниже.
+// а EXTRA_ROLL_GRANTED/FINISH обрабатываются отдельно ниже (это уже не
+// просто бейдж, а другая кнопка действия).
 const NOTABLE_EVENT_LABELS: Partial<Record<RollEventType, string>> = {
   BIRTH_SUCCESS: 'Фишка родилась!',
   SNAKE: 'Змея утянула фишку вниз',
   ARROW: 'Стрела подняла фишку вверх',
-  BEYOND_FINISH: 'Фишка вышла за пределы клетки 68',
+  BEYOND_FINISH: 'Клетка за финишем — дальше только маленькие числа',
+  // Правка после сверки реальных правил: раньше TRIPLE_SIX_RESET означал
+  // "фишка вообще не двигалась" и получал отдельный тип модалки. Теперь
+  // это не так — сгорание серии всегда сопровождается обычным ходом
+  // (см. gameEngine.ts), поэтому это просто ещё один бейдж в обычном
+  // результате, как SNAKE/ARROW.
+  TRIPLE_SIX_RESET: 'Три шестёрки подряд сгорели — старт этого хода сброшен',
 };
 
 // События, при которых фишка не двигалась вовсе — для них модалка с клеткой
@@ -36,10 +43,7 @@ const FLASH_EVENT_LABELS: Partial<Record<RollEventType, string>> = {
 
 type DiceStage = 'idle' | 'physical-pick' | 'rolling' | 'face' | 'moving';
 
-type Sheet =
-  | { kind: 'result'; cellId: number; rollValue: number; events: RollEvent[] }
-  | { kind: 'triple-six'; cellId: number }
-  | { kind: 'peek'; cellId: number };
+type Sheet = { kind: 'result'; cellId: number; rollValue: number; events: RollEvent[] } | { kind: 'peek'; cellId: number };
 
 function hasEvent(events: RollEvent[], type: RollEventType): boolean {
   return events.some((e) => e.type === type);
@@ -84,6 +88,7 @@ export function GameHome({ session, nav }: ScreenProps) {
 
   const coordinates = getBoardCoordinates(game.rulesetId);
   const imageSrc = getBoardImageSrc(game.rulesetId);
+  const overlayImageSrc = getBoardOverlaySrc(game.rulesetId);
 
   // Анимируем приезд фишки только когда lastMove реально закончился именно
   // в текущей клетке — а не при каждом заходе на GameHome (например, из
@@ -122,10 +127,16 @@ export function GameHome({ session, nav }: ScreenProps) {
    * Общий хвост оркестрации для обоих режимов кубика: виртуальный вызывает
    * это без value (движок сам бросит случайное число), физический — со
    * значением, которое человек выбрал руками.
+   *
+   * async: session.roll() теперь Promise (готовим границу к переносу
+   * движка на сервер — см. useGameSession.getVirtualRollValue()). Сегодня
+   * она резолвится практически мгновенно (Math.random() на клиенте), но
+   * когда виртуальный бросок станет сетевым запросом, ждать здесь уже
+   * ничего дополнительно не придётся — await тот же самый.
    */
-  const resolveRoll = (value?: number) => {
+  const resolveRoll = async (value?: number) => {
     hapticImpact('medium');
-    const { events, move, game: updatedGame, value: rolledValue } = session.roll(value);
+    const { events, move, game: updatedGame, value: rolledValue } = await session.roll(value);
 
     setFaceValue(rolledValue);
     setDiceStage('face');
@@ -165,11 +176,11 @@ export function GameHome({ session, nav }: ScreenProps) {
       after(boardAnimMs, () => {
         setDiceStage('idle');
         hapticImpact('light');
-        if (hasEvent(events, 'TRIPLE_SIX_RESET')) {
-          setSheet({ kind: 'triple-six', cellId: updatedGame.currentCell });
-        } else {
-          setSheet({ kind: 'result', cellId: updatedGame.currentCell, rollValue: rolledValue, events });
-        }
+        // Раньше здесь была отдельная ветка для TRIPLE_SIX_RESET (свой тип
+        // модалки, без содержимого клетки) — убрана вместе со сгоранием
+        // "без хода": теперь это всегда обычный результат с ходом, просто
+        // с дополнительным бейджем (см. NOTABLE_EVENT_LABELS выше).
+        setSheet({ kind: 'result', cellId: updatedGame.currentCell, rollValue: rolledValue, events });
       });
     });
   };
@@ -242,6 +253,7 @@ export function GameHome({ session, nav }: ScreenProps) {
         <Board
           coordinates={coordinates}
           imageSrc={imageSrc}
+          overlayImageSrc={overlayImageSrc}
           currentCell={game.currentCell}
           fromCell={fromCell}
           viaCell={viaCell}
@@ -297,19 +309,6 @@ export function GameHome({ session, nav }: ScreenProps) {
 
       <Modal open={sheet?.kind === 'peek'} onClose={closeSheet}>
         {sheet?.kind === 'peek' && <CellContent cellId={sheet.cellId} cell={cellById(sheet.cellId)} />}
-      </Modal>
-
-      <Modal open={sheet?.kind === 'triple-six'} onClose={closeSheet} title="Три шестёрки подряд">
-        {sheet?.kind === 'triple-six' && (
-          <>
-            <p>Серия шестёрок оборвана — фишка возвращается на клетку {sheet.cellId}.</p>
-            <div className="modal-actions">
-              <button className="primary" onClick={rollAgain}>
-                Бросить снова
-              </button>
-            </div>
-          </>
-        )}
       </Modal>
 
       <Modal open={sheet?.kind === 'result'} onClose={closeSheet}>

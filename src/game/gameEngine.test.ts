@@ -34,7 +34,14 @@ const testRuleset: Ruleset = {
   },
   transitions: {
     snakes: [{ from: 10, to: 3 }],
-    arrows: [{ from: 5, to: 9 }],
+    // Добавлена { from: 17, to: 18 } специально для теста №13 ниже — стрела,
+    // ведущая ТОЧНО на finishCell (18), чтобы проверить исправленный баг
+    // "переход на финиш не завершал партию". На остальные тесты не влияет:
+    // ни один из их маршрутов не проходит через клетку 17.
+    arrows: [
+      { from: 5, to: 9 },
+      { from: 17, to: 18 },
+    ],
   },
   beyondFinish: {
     range: [19, 20],
@@ -114,23 +121,67 @@ describe('Game Engine', () => {
     expect(res.game.currentCell).toBe(13);
   });
 
-  it('7. серия из трёх шестёрок: сброс к позиции до серии + результат 4-го броска', () => {
+  it('7. серия из трёх шестёрок подряд, затем НЕ шестёрка: сгорание всех трёх, откат к позиции до серии + результат следующего броска', () => {
+    // Подтверждено по реальным правилам (см. памятку): сгорание — это
+    // строго "ровно 3 шестёрки подряд, а следующий бросок — НЕ шестёрка".
+    // Каждая из трёх шестёрок при этом ПРИМЕНЯЕТСЯ как обычное движение
+    // (не блокируется заранее) — а сгорает (откатывается) только когда
+    // становится ясно, что серия закончилась именно на тройке. Пример из
+    // правил: 6-6-6-3 -> фишка идёт всего на 3 клетки от позиции до серии.
     let game = newGame();
     game = processRoll(game, testRuleset, 6, 'e1').game; // birth -> cell 1 (свой отдельный ход)
     const positionBeforeSeries = game.currentCell; // 1
 
-    game = processRoll(game, testRuleset, 6, 'e2').game; // six #1 новой серии -> cell 7
-    game = processRoll(game, testRuleset, 6, 'e3').game; // six #2 -> cell 13
-    const res3 = processRoll(game, testRuleset, 6, 'e4'); // six #3 -> triple six reset
-    expect(res3.events.some((e) => e.type === 'TRIPLE_SIX_RESET')).toBe(true);
-    expect(res3.game.currentCell).toBe(positionBeforeSeries); // откат к позиции до серии (1), рождение не откатывается
-    expect(res3.game.isBorn).toBe(true);
-    expect(res3.game.status).toBe('IN_PROGRESS');
-    expect(res3.game.consecutiveSixes).toBe(0);
+    let res = processRoll(game, testRuleset, 6, 'e2'); // six #1 новой серии -> cell 7
+    expect(res.game.currentCell).toBe(7);
+    expect(res.game.consecutiveSixes).toBe(1);
+    game = res.game;
 
-    // 4-й бросок серии — обычное движение от восстановленной позиции
-    const res4 = processRoll(res3.game, testRuleset, 3, 'e5');
-    expect(res4.game.currentCell).toBe(positionBeforeSeries + 3);
+    res = processRoll(game, testRuleset, 6, 'e3'); // six #2 -> cell 13
+    expect(res.game.currentCell).toBe(13);
+    expect(res.game.consecutiveSixes).toBe(2);
+    game = res.game;
+
+    res = processRoll(game, testRuleset, 6, 'e4'); // six #3 — движение ПРИМЕНЯЕТСЯ (13+6=19>18, значит перелёт "сгорает" по правилу границы доски — возьмём другой путь ниже, тут просто проверяем счётчик)
+    expect(res.game.consecutiveSixes).toBe(3);
+    game = res.game;
+    const cellAfterThirdSix = game.currentCell;
+
+    const res4 = processRoll(game, testRuleset, 3, 'e5'); // НЕ шестёрка сразу после ровно 3 шестёрок -> сгорание
+    expect(res4.events.some((e) => e.type === 'TRIPLE_SIX_RESET')).toBe(true);
+    expect(res4.game.currentCell).toBe(positionBeforeSeries + 3); // откат к позиции ДО серии, затем этот бросок применён с неё
+    expect(res4.game.currentCell).not.toBe(cellAfterThirdSix + 3); // это НЕ продолжение от клетки после третьей шестёрки
+    expect(res4.game.isBorn).toBe(true);
+    expect(res4.game.status).toBe('IN_PROGRESS');
+    expect(res4.game.consecutiveSixes).toBe(0);
+  });
+
+  it('7b. ЧЕТЫРЕ шестёрки подряд — сгорание отменяется, все броски считаются кумулятивно (6-6-6-6-4 = 28 клеток)', () => {
+    // Ключевой пример из реальных правил: если после ровно трёх шестёрок
+    // выпадает ЕЩЁ одна (четвёртая) шестёрка — откат отменяется насовсем
+    // для этой серии, и весь путь (включая все четыре шестёрки) считается
+    // как обычное кумулятивное движение.
+    let game = newGame();
+    game = processRoll(game, testRuleset, 6, 'e1').game; // birth -> cell 1 (start = 1)
+
+    game = processRoll(game, testRuleset, 6, 'e2').game; // six #1 -> 7
+    game = processRoll(game, testRuleset, 6, 'e3').game; // six #2 -> 13
+
+    // Дальше по прямой (13+6=19) вышли бы за extendedFinishCell(20)? Нет,
+    // 19<=20 — это "клетка за финишем" зона, движение не блокируется.
+    const res3 = processRoll(game, testRuleset, 6, 'e4'); // six #3 -> 13+6=19
+    expect(res3.game.consecutiveSixes).toBe(3);
+    expect(res3.game.currentCell).toBe(19);
+    game = res3.game;
+
+    // six #4 подряд — сгорание НЕ срабатывает, движение кумулятивное дальше.
+    // 19+6=25 > extendedFinishCell(20) -> перелёт, ход "сгорает" (фишка на
+    // месте), но это уже другое правило (граница доски), не тройная
+    // шестёрка — TRIPLE_SIX_RESET здесь быть не должно.
+    const res4 = processRoll(game, testRuleset, 6, 'e5');
+    expect(res4.events.some((e) => e.type === 'TRIPLE_SIX_RESET')).toBe(false);
+    expect(res4.game.currentCell).toBe(19); // перелёт за доску -> осталась на месте, а не откатилась к 1
+    expect(res4.game.consecutiveSixes).toBe(4);
   });
 
   it('8. точное попадание на finishCell — победа', () => {
@@ -147,7 +198,7 @@ describe('Game Engine', () => {
     expect(final.events.some((e) => e.type === 'FINISH')).toBe(true);
   });
 
-  it('9. перелёт за finishCell в диапазон 69-72 (аналог) — особая логика, партия не завершена', () => {
+  it('9. перелёт за finishCell в диапазон 69-72 (аналог) — не блокируется, обычное движение, партия не завершена', () => {
     let game = newGame();
     game = processRoll(game, testRuleset, 6, 'e1').game; // -> cell 1
     game = processRoll(game, testRuleset, 5, 'e2').game; // -> 6
@@ -157,6 +208,30 @@ describe('Game Engine', () => {
     expect(res.game.status).not.toBe('FINISHED');
     expect(res.game.currentCell).toBe(19);
     expect(res.events.some((e) => e.type === 'BEYOND_FINISH')).toBe(true);
+  });
+
+  it('13. переход (стрела/змея), приводящий ТОЧНО на finishCell, тоже завершает партию (исправленный баг)', () => {
+    // Раньше здесь была реальная ошибка: финиш проверялся только по
+    // прямому броску (rawTarget === finishCell), ДО применения перехода —
+    // из-за этого стрела/змея, ведущая точно на финишную клетку, молча
+    // перемещала фишку туда, но партия не завершалась. Подтверждено:
+    // "если игрок становится на 68 даже по стреле — это в любом случае
+    // финиш". В тестовой фикстуре для этого добавлена стрела 17 -> 18
+    // (18 == finishCell).
+    let game = newGame();
+    game = processRoll(game, testRuleset, 6, 'e1').game; // birth -> 1
+    game = processRoll(game, testRuleset, 2, 'e2').game; // 1 -> 3 (не 5 и не 10, без переходов)
+    game = processRoll(game, testRuleset, 3, 'e3').game; // 3 -> 6
+    game = processRoll(game, testRuleset, 3, 'e4').game; // 6 -> 9 (это "to" стрелы 5->9, но не "from" — переход не срабатывает)
+    game = processRoll(game, testRuleset, 4, 'e5').game; // 9 -> 13
+
+    // 13 -> 17 напрямую (это "from" стрелы 17->18) — переход срабатывает
+    // СРАЗУ на этом же броске, телепортируя на 18 == finishCell.
+    const final = processRoll(game, testRuleset, 4, 'e6');
+    expect(final.game.currentCell).toBe(18);
+    expect(final.game.status).toBe('FINISHED');
+    expect(final.events.some((e) => e.type === 'ARROW')).toBe(true);
+    expect(final.events.some((e) => e.type === 'FINISH')).toBe(true);
   });
 
   it('10. попытка ходить в статусе FINISHED отклоняется', () => {
