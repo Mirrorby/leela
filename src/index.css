@@ -5,10 +5,10 @@
      Telegram — наоборот, useTelegramTheme.ts передаёт ЭТИ цвета в Telegram
      (setHeaderColor/setBackgroundColor), чтобы chrome вокруг приложения
      тоже был тёплым. Единый бренд важнее адаптации под чужую тему. */
-  --bg-top: #3d1f0a;
-  --bg-mid: #6b2e0e;
-  --bg-accent: #c24e12;
-  --bg-bottom: #f0801a;
+  --bg-top: #6e3a17;
+  --bg-mid: #a85420;
+  --bg-accent: #d97a2e;
+  --bg-bottom: #eba656;
   --gold: #e8a23d;
   --gold-soft: #f2b44d;
   --cream: #fbe8ce;
@@ -17,7 +17,7 @@
   --border: rgba(242, 180, 77, 0.28);
   --code-bg: rgba(255, 255, 255, 0.06);
   --accent: var(--gold-soft);
-  --accent-fg: #3d1f0a;
+  --accent-fg: #4a2711;
   --accent-bg: rgba(242, 180, 77, 0.14);
   --accent-border: rgba(242, 180, 77, 0.4);
   --shadow: rgba(0, 0, 0, 0.35) 0 10px 25px -8px;

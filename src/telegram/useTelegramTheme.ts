@@ -8,8 +8,8 @@ import { getWebApp, isTelegramEnvironment } from './telegramAdapter';
 // чтобы не было резкого шва между системным Telegram UI и приложением.
 // Единый бренд важнее адаптации под чужую тему. Значение = --bg-top из
 // index.css (самый тёмный, "верхний" тон градиента).
-const APP_HEADER_COLOR = '#3D1F0A';
-const APP_BACKGROUND_COLOR = '#3D1F0A';
+const APP_HEADER_COLOR = '#6E3A17';
+const APP_BACKGROUND_COLOR = '#6E3A17';
 
 export function useTelegramTheme(): void {
   useEffect(() => {
