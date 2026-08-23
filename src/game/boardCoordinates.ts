@@ -15,13 +15,14 @@ const BOARD_IMAGES: Record<string, string> = {
   'classic-v1': 'board/classic-v1-board.svg',
 };
 
-// Отдельный слой змей/стрел — необязательный (Partial, не строка): пока
-// файла нет, Board.tsx просто не рендерит второй <img>. Формат не
-// обязан быть PNG — подойдёт и SVG, лишь бы прозрачный фон и та же сетка
-// координат (viewBox "0 0 816 736", центры клеток — см.
-// classic-v1-coordinates.json).
-const BOARD_OVERLAY_IMAGES: Partial<Record<string, string>> = {
-  'classic-v1': 'board/classic-v1-transitions.png',
+// Слои поверх доски (змеи, стрелы — как отдельные картинки) — необязательные
+// (Partial, не строка): пока списка нет, Board.tsx просто не рендерит
+// дополнительные <img>. Формат не обязан быть PNG — подойдёт и SVG, лишь бы
+// прозрачный фон и та же сетка координат (viewBox "0 0 816 736", центры
+// клеток — см. classic-v1-coordinates.json). Порядок в массиве — порядок
+// рисования (снизу вверх): змеи сначала, стрелы поверх них.
+const BOARD_OVERLAY_IMAGES: Partial<Record<string, string[]>> = {
+  'classic-v1': ['board/classic-v1-snakes.png', 'board/classic-v1-arrows.png'],
 };
 
 export function getBoardCoordinates(rulesetId: string): BoardCoordinates {
@@ -40,8 +41,8 @@ export function getBoardImageSrc(rulesetId: string): string {
   return `${import.meta.env.BASE_URL}${path}`;
 }
 
-/** Слой змей/стрел поверх доски. undefined — слоя ещё нет, ничего не рисуем. */
-export function getBoardOverlaySrc(rulesetId: string): string | undefined {
-  const path = BOARD_OVERLAY_IMAGES[rulesetId];
-  return path ? `${import.meta.env.BASE_URL}${path}` : undefined;
+/** Слои поверх доски (змеи/стрелы) — пустой массив, если слоёв ещё нет. */
+export function getBoardOverlaySrcs(rulesetId: string): string[] {
+  const paths = BOARD_OVERLAY_IMAGES[rulesetId];
+  return paths ? paths.map((p) => `${import.meta.env.BASE_URL}${p}`) : [];
 }

@@ -358,37 +358,63 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 2px;
   text-align: center;
+  /* Правка после ревью: раньше это был просто текст без фона, терялся на
+     фоне узорчатой мандалы — теперь отдельная "плашка"-заголовок, как и
+     круглые кнопки рядом (тот же pill-стиль), чтобы явно читалось как
+     заголовок экрана, а не случайный текст. */
+  padding: 6px 14px;
+  border-radius: 14px;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  backdrop-filter: blur(6px);
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .current-cell-info .cell-number {
-  font-size: 13px;
-  color: var(--gold);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold-soft);
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 
 .current-cell-info .cell-snippet {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text);
+  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 
 .game-home-board {
-  flex: 1;
+  /* Правка после ревью: раньше flex:1 + центрирование заставляло доску
+     "скакать" по вертикали каждый раз, когда менялась высота нижнего
+     блока (обычный кубик — компактный, выбор грани вручную — намного
+     выше). Теперь доска сразу после шапки, с фиксированной позицией
+     сверху, а не растягивается/центрируется в общей области с низом
+     экрана — растёт и центрируется только .game-home-bottom (см. ниже),
+     доски это больше не касается. */
+  flex-shrink: 0;
   display: flex;
-  align-items: center;
   justify-content: center;
-  min-height: 0;
 }
 
 .game-home-bottom {
+  /* Занимает всё оставшееся место под доской и центрирует свой контент
+     ВНУТРИ себя — рост/сжатие (кубик <-> выбор грани) больше не двигает
+     доску, только перераспределяет пространство ниже неё. */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 

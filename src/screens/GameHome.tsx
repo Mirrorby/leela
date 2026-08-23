@@ -4,7 +4,7 @@ import type { RollEvent, RollEventType } from '../types/game';
 import { Board, BOARD_LEAP_DURATION_MS, BOARD_STEP_DURATION_MS } from '../components/Board';
 import { Modal } from '../components/Modal';
 import { CellContent } from '../components/CellContent';
-import { getBoardCoordinates, getBoardImageSrc, getBoardOverlaySrc } from '../game/boardCoordinates';
+import { getBoardCoordinates, getBoardImageSrc, getBoardOverlaySrcs } from '../game/boardCoordinates';
 import { DiceIcon } from '../components/icons';
 import { hapticImpact, hapticNotification } from '../telegram/haptics';
 
@@ -88,7 +88,7 @@ export function GameHome({ session, nav }: ScreenProps) {
 
   const coordinates = getBoardCoordinates(game.rulesetId);
   const imageSrc = getBoardImageSrc(game.rulesetId);
-  const overlayImageSrc = getBoardOverlaySrc(game.rulesetId);
+  const overlayImageSrcs = getBoardOverlaySrcs(game.rulesetId);
 
   // Анимируем приезд фишки только когда lastMove реально закончился именно
   // в текущей клетке — а не при каждом заходе на GameHome (например, из
@@ -253,7 +253,7 @@ export function GameHome({ session, nav }: ScreenProps) {
         <Board
           coordinates={coordinates}
           imageSrc={imageSrc}
-          overlayImageSrc={overlayImageSrc}
+          overlayImageSrcs={overlayImageSrcs}
           currentCell={game.currentCell}
           fromCell={fromCell}
           viaCell={viaCell}

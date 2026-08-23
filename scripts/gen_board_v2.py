@@ -233,7 +233,16 @@ def arrow_path(x1, y1, x2, y2, color, color_dark):
     return f'<g opacity="0.95">{fletching}{shaft}{head}</g>'
 
 
-def build_svg() -> str:
+def build_svg(draw_transitions: bool = False) -> str:
+    """draw_transitions=False (по умолчанию) — база доски БЕЗ змей/стрел
+    (сетка, номера, чакра-колонка, лепестки). Именно этот вариант ставится
+    в public/board/classic-v1-board.svg — змей/стрел рисует отдельный слой
+    поверх (overlayImageSrc в Board.tsx / getBoardOverlaySrc в
+    boardCoordinates.ts): пользовательские PNG public/board/
+    classic-v1-snakes.png + classic-v1-arrows.png, перекрашенные скриптом
+    scripts/recolor_overlay.py. draw_transitions=True оставлен как
+    встроенный fallback/референс на случай, если внешний слой недоступен.
+    """
     parts = [
         f'<svg viewBox="0 0 {WIDTH} {HEIGHT}" xmlns="http://www.w3.org/2000/svg" '
         f'font-family="\'Segoe UI\', system-ui, sans-serif">',
@@ -290,22 +299,23 @@ def build_svg() -> str:
         f'stroke-opacity="0.2" stroke-dasharray="2 7" stroke-linecap="round" />'
     )
 
-    # Змеи и стрелы — реальные переходы с физической доски (см.
-    # REAL_SNAKES/REAL_ARROWS выше и src/data/rulesets/classic-v1.json).
-    # Рисуем ДО цифр клеток, чтобы номера оставались читаемыми поверх них.
-    for frm, to in REAL_SNAKES:
-        x1, y1 = COORDS[frm]
-        x2, y2 = COORDS[to]
-        parts.append(f'<!-- snake {frm} -> {to} -->')
-        parts.append(snake_path(x1, y1, x2, y2, "#B3402B", "#2B1608"))
-    for frm, to in REAL_ARROWS:
-        x1, y1 = COORDS[frm]
-        x2, y2 = COORDS[to]
-        parts.append(f'<!-- arrow {frm} -> {to} -->')
-        parts.append(arrow_path(x1, y1, x2, y2, "#4E8B57", "#274A2C"))
+    # Змеи и стрелы — только если явно попросили (см. docstring). По
+    # умолчанию этот блок пропускается: за картинку переходов теперь
+    # отвечает внешний слой (overlayImageSrc).
+    if draw_transitions:
+        for frm, to in REAL_SNAKES:
+            x1, y1 = COORDS[frm]
+            x2, y2 = COORDS[to]
+            parts.append(f'<!-- snake {frm} -> {to} -->')
+            parts.append(snake_path(x1, y1, x2, y2, "#B3402B", "#2B1608"))
+        for frm, to in REAL_ARROWS:
+            x1, y1 = COORDS[frm]
+            x2, y2 = COORDS[to]
+            parts.append(f'<!-- arrow {frm} -> {to} -->')
+            parts.append(arrow_path(x1, y1, x2, y2, "#4E8B57", "#274A2C"))
 
-    # Цифры клеток — последним проходом, поверх заливки И поверх черновых
-    # змей/стрел, чтобы номер клетки был читаем всегда.
+    # Цифры клеток — последним проходом, поверх заливки И поверх змей/стрел
+    # (если они нарисованы), чтобы номер клетки был читаем всегда.
     for cid in range(1, 73):
         x, y = COORDS[cid]
         text_color, text_opacity = cell_meta[cid]
@@ -328,6 +338,32 @@ def build_svg() -> str:
     return "\n".join(parts)
 
 
+def build_alignment_guide() -> str:
+    """Прозрачный шаблон-подложка для внешнего редактора: та же сетка
+    координат "0 0 816 736", что и у боевой доски — тонкая рамка с номером
+    и крестик ровно в центре клетки (та же x,y, что в
+    classic-v1-coordinates.json). Chakра-колонка помечена отдельно."""
+    parts = [
+        f'<svg viewBox="0 0 {WIDTH} {HEIGHT}" xmlns="http://www.w3.org/2000/svg" '
+        f'font-family="\'Segoe UI\', system-ui, sans-serif">'
+    ]
+    for cid in range(1, 73):
+        x, y = COORDS[cid]
+        is_chakra = cid in CHAKRA_CELLS
+        rx, ry = x - TILE / 2, y - TILE / 2
+        stroke = "#F2B44D" if is_chakra else "#999999"
+        parts.append(
+            f'<rect x="{rx:.1f}" y="{ry:.1f}" width="{TILE}" height="{TILE}" rx="14" '
+            f'fill="none" stroke="{stroke}" stroke-width="1" stroke-dasharray="{"none" if is_chakra else "3 3"}" />'
+        )
+        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="1.6" fill="{stroke}" />')
+        parts.append(
+            f'<text x="{x:.1f}" y="{ry+12:.1f}" font-size="10" fill="{stroke}" text-anchor="middle">{cid}</text>'
+        )
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
 def build_coordinates_json() -> dict:
     return {
         "rulesetId": RULESET_ID,
@@ -340,7 +376,10 @@ def build_coordinates_json() -> dict:
 
 
 if __name__ == "__main__":
-    svg = build_svg()
+    # База доски БЕЗ змей/стрел — именно этот файл грузит приложение как
+    # imageSrc. Змей/стрел теперь рисует отдельный слой (см. docstring
+    # build_svg). Если понадобится встроенный вариант — build_svg(True).
+    svg = build_svg(draw_transitions=False)
     with open("public/board/classic-v1-board.svg", "w", encoding="utf-8") as f:
         f.write(svg)
 
@@ -349,5 +388,11 @@ if __name__ == "__main__":
         json.dump(coords, f, ensure_ascii=False, indent=2)
         f.write("\n")
 
+    guide = build_alignment_guide()
+    with open("scripts/classic-v1-alignment-guide.svg", "w", encoding="utf-8") as f:
+        f.write(guide)
+
     print(f"viewBox: 0 0 {WIDTH} {HEIGHT}")
     print("chakra column cells:", CHAKRA_CELLS, "all at x =", COORDS[5][0])
+    print("board (no transitions): public/board/classic-v1-board.svg")
+    print("alignment guide: scripts/classic-v1-alignment-guide.svg")
