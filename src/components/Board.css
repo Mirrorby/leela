@@ -25,6 +25,22 @@
   -webkit-user-drag: none;
 }
 
+/* Необязательный слой змей/стрел (getBoardOverlaySrc) — та же геометрия,
+   что у .board-bg, просто рисуется поверх него. Прозрачный PNG/SVG,
+   выровненный по той же сетке координат — см. комментарий в
+   boardCoordinates.ts. Идёт по разметке ДО .board-overlay (интерактивного
+   SVG), поэтому тап-зоны клеток остаются кликабельными. */
+.board-overlay-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 .board-overlay {
   position: absolute;
   inset: 0;

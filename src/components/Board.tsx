@@ -34,6 +34,10 @@ export interface BoardProps {
   coordinates: BoardCoordinates;
   /** Путь к SVG-картинке доски (обычно из getBoardImageSrc()). */
   imageSrc: string;
+  /** Необязательный слой змей/стрел поверх доски (getBoardOverlaySrc()).
+   *  PNG или SVG, прозрачный фон, та же сетка координат, что и imageSrc —
+   *  рисуется отдельным <img> между фоном доски и интерактивным SVG. */
+  overlayImageSrc?: string;
   /** Логическая (целевая) позиция фишки. */
   currentCell: number;
   /** Откуда анимировать приезд. Не передан — фишка ставится сразу без анимации. */
@@ -52,6 +56,7 @@ type TokenPhase = 'idle' | 'step' | 'leap';
 export function Board({
   coordinates,
   imageSrc,
+  overlayImageSrc,
   currentCell,
   fromCell,
   viaCell,
@@ -112,6 +117,9 @@ export function Board({
     <div className={`board-wrap${className ? ` ${className}` : ''}`}>
       <div className="board-stage" style={{ aspectRatio: viewBox.split(' ').slice(2).join(' / ') }}>
         <img className="board-bg" src={imageSrc} alt="Игровое поле Лила" draggable={false} />
+        {overlayImageSrc && (
+          <img className="board-overlay-art" src={overlayImageSrc} alt="" draggable={false} aria-hidden="true" />
+        )}
 
         <svg
           className="board-overlay"

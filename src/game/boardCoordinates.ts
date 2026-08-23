@@ -15,6 +15,15 @@ const BOARD_IMAGES: Record<string, string> = {
   'classic-v1': 'board/classic-v1-board.svg',
 };
 
+// Отдельный слой змей/стрел — необязательный (Partial, не строка): пока
+// файла нет, Board.tsx просто не рендерит второй <img>. Формат не
+// обязан быть PNG — подойдёт и SVG, лишь бы прозрачный фон и та же сетка
+// координат (viewBox "0 0 816 736", центры клеток — см.
+// classic-v1-coordinates.json).
+const BOARD_OVERLAY_IMAGES: Partial<Record<string, string>> = {
+  'classic-v1': 'board/classic-v1-transitions.png',
+};
+
 export function getBoardCoordinates(rulesetId: string): BoardCoordinates {
   const coords = BOARD_COORDINATES[rulesetId];
   if (!coords) {
@@ -29,4 +38,10 @@ export function getBoardImageSrc(rulesetId: string): string {
     throw new Error(`Нет изображения доски для ruleset "${rulesetId}"`);
   }
   return `${import.meta.env.BASE_URL}${path}`;
+}
+
+/** Слой змей/стрел поверх доски. undefined — слоя ещё нет, ничего не рисуем. */
+export function getBoardOverlaySrc(rulesetId: string): string | undefined {
+  const path = BOARD_OVERLAY_IMAGES[rulesetId];
+  return path ? `${import.meta.env.BASE_URL}${path}` : undefined;
 }
