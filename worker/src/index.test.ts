@@ -4,7 +4,7 @@ import { createFakeD1 } from './testUtils/fakeD1';
 import { buildSignedInitData, freshAuthDate, TEST_BOT_TOKEN } from './testUtils/signInitData';
 
 function makeEnv(): Env {
-  return { DB: createFakeD1(), BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'unused-in-this-suite' };
+  return { DB: createFakeD1(), BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'test-webhook-secret' };
 }
 
 async function authHeaderFor(telegramId: number): Promise<string> {
@@ -311,5 +311,47 @@ describe('worker routes', () => {
       fakeCtx
     );
     expect(rejectedRes.status).toBe(409);
+  });
+});
+
+describe('/telegram/webhook routing', () => {
+  let env: Env;
+
+  beforeEach(() => {
+    env = makeEnv();
+    vi.restoreAllMocks();
+  });
+
+  it('GET на /telegram/webhook отклоняется 405 (Telegram шлёт только POST)', async () => {
+    const res = await worker.fetch(req('/telegram/webhook'), env, fakeCtx);
+    expect(res.status).toBe(405);
+  });
+
+  it('POST с неверным секретом отклоняется 401, минуя авторизацию initData (разные механизмы)', async () => {
+    const res = await worker.fetch(
+      req('/telegram/webhook', {
+        method: 'POST',
+        headers: { 'X-Telegram-Bot-Api-Secret-Token': 'wrong', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ update_id: 1 }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('POST с верным секретом и /start доходит до обработчика и отвечает 200', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const res = await worker.fetch(
+      req('/telegram/webhook', {
+        method: 'POST',
+        headers: { 'X-Telegram-Bot-Api-Secret-Token': env.WEBHOOK_SECRET, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ update_id: 1, message: { message_id: 1, chat: { id: 42 }, text: '/start' } }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(200);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,6 +2,7 @@ import { createNewGame, processRoll, canRoll } from './game/gameEngine';
 import { isValidDiceValue, rollVirtualDice } from './game/diceEngine';
 import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
+import { handleTelegramWebhook } from './telegram/webhook';
 import { insertGame, updateGame, getGameById, listGamesByUser } from './games/repository';
 import type { DiceMode } from './types/game';
 
@@ -188,9 +189,11 @@ export default {
       return json({ error: 'not_found' }, { status: 404 });
     }
 
-    // Заглушка — обработчик /start и открытие Mini App появится в этапе 7.6
     if (url.pathname === '/telegram/webhook') {
-      return json({ error: 'not_implemented' }, { status: 501 });
+      if (request.method !== 'POST') {
+        return json({ error: 'method_not_allowed' }, { status: 405 });
+      }
+      return handleTelegramWebhook(request, env.BOT_TOKEN, env.WEBHOOK_SECRET);
     }
 
     return json({ error: 'not_found' }, { status: 404 });
