@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
-import type { RollEvent, RollEventType } from '../types/game';
+import type { GameState, RollEvent, RollEventType } from '../types/game';
+import type { LastMove } from '../state/useGameSession';
 import { Board, BOARD_LEAP_DURATION_MS, BOARD_STEP_DURATION_MS } from '../components/Board';
 import { Modal } from '../components/Modal';
 import { CellContent } from '../components/CellContent';
@@ -125,18 +126,28 @@ export function GameHome({ session, nav }: ScreenProps) {
 
   /**
    * Общий хвост оркестрации для обоих режимов кубика: виртуальный вызывает
-   * это без value (движок сам бросит случайное число), физический — со
+   * это без value (сервер сам бросит случайное число), физический — со
    * значением, которое человек выбрал руками.
    *
-   * async: session.roll() теперь Promise (готовим границу к переносу
-   * движка на сервер — см. useGameSession.getVirtualRollValue()). Сегодня
-   * она резолвится практически мгновенно (Math.random() на клиенте), но
-   * когда виртуальный бросок станет сетевым запросом, ждать здесь уже
-   * ничего дополнительно не придётся — await тот же самый.
+   * session.roll() — сетевой запрос к Worker'у (этап 7.5, тонкий клиент).
+   * При сбое (нет сети, партия уже завершена на сервере и т.п.) он бросает
+   * исключение — ловим здесь, чтобы кубик не застрял навсегда в состоянии
+   * "крутится": возвращаем idle и показываем ту же короткую всплывающую
+   * подсказку, что и для отклонённых движком бросков.
    */
   const resolveRoll = async (value?: number) => {
     hapticImpact('medium');
-    const { events, move, game: updatedGame, value: rolledValue } = await session.roll(value);
+    let events: RollEvent[];
+    let move: LastMove | null;
+    let updatedGame: GameState;
+    let rolledValue: number;
+    try {
+      ({ events, move, game: updatedGame, value: rolledValue } = await session.roll(value));
+    } catch {
+      setDiceStage('idle');
+      showFlash(session.error ?? 'Не удалось отправить бросок — проверь соединение.');
+      return;
+    }
 
     setFaceValue(rolledValue);
     setDiceStage('face');

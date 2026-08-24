@@ -139,7 +139,7 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
     await updateGame(env.DB, nextGame, auth.telegramId);
   }
 
-  return json({ game: nextGame, events });
+  return json({ game: nextGame, events, value });
 }
 
 export default {

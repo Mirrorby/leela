@@ -159,6 +159,7 @@ describe('worker routes', () => {
     expect(rollRes.status).toBe(200);
     const rolled = await readJson(rollRes);
     expect(rolled.game.isBorn).toBe(true);
+    expect(rolled.value).toBe(6);
     expect(rolled.events.some((e: { type: string }) => e.type === 'BIRTH_SUCCESS')).toBe(true);
 
     // Состояние реально записано в D1 — повторный GET видит уже обновлённую партию.
@@ -204,6 +205,11 @@ describe('worker routes', () => {
 
     expect(second.events).toEqual([{ type: 'DUPLICATE_IGNORED' }]);
     expect(second.game.currentCell).toBe(first.game.currentCell);
+    // На дубликате value просто отражает то, что было прислано в ЭТОМ
+    // запросе (клиент код это не показывает пользователю — см.
+    // FLASH_EVENT_LABELS.DUPLICATE_IGNORED), важно лишь что поле есть и
+    // валидно по форме контракта ответа.
+    expect(typeof second.value).toBe('number');
   });
 
   it('виртуальный режим: значение генерирует сервер, любой value от клиента игнорируется', async () => {
@@ -236,6 +242,7 @@ describe('worker routes', () => {
     );
     const rolled = await readJson(rollRes);
     expect(rolled.game.isBorn).toBe(true); // родилась бы только от 6, не от подсунутой 1
+    expect(rolled.value).toBe(6); // сервер вернул СВОЁ значение, не клиентскую подделку (1)
   });
 
   it('завершённая партия отклоняет новые броски (409)', async () => {
