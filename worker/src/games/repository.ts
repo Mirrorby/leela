@@ -115,15 +115,21 @@ export async function updateGame(db: D1Database, game: GameState, telegramId: st
   // WHERE ... AND telegram_id = ?: партия не может "перепрыгнуть" к другому
   // владельцу через update, даже теоретически — дублирует проверку доступа
   // при чтении на всякий случай.
+  // dice_mode добавлен в SET (баг п.1): раньше эта колонка отсутствовала
+  // здесь вовсе, из-за чего смена режима кубика во время партии (см.
+  // handleRoll в index.ts) применялась только к ОТВЕТУ конкретного запроса,
+  // но никогда не долетала до D1 — уже следующий GET/roll видел старый
+  // diceMode со времени создания партии.
   await db
     .prepare(
       `UPDATE games SET
-        status = ?, current_cell = ?, is_born = ?, rolls_json = ?, turns_json = ?,
+        status = ?, dice_mode = ?, current_cell = ?, is_born = ?, rolls_json = ?, turns_json = ?,
         updated_at = ?, consecutive_sixes = ?, position_before_six_series = ?
       WHERE id = ? AND telegram_id = ?`
     )
     .bind(
       p.status,
+      p.dice_mode,
       p.current_cell,
       p.is_born,
       p.rolls_json,

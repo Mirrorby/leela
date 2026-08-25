@@ -245,6 +245,102 @@ describe('worker routes', () => {
     expect(rolled.value).toBe(6); // сервер вернул СВОЁ значение, не клиентскую подделку (1)
   });
 
+  it('переключение diceMode во время партии (п.1): бросок с diceMode="physical" переводит партию с виртуального режима на физический и использует value из запроса', async () => {
+    // Партия создана виртуальной — если бы сервер игнорировал diceMode из
+    // тела ролла (старый баг), он бы сам сгенерировал случайное значение и
+    // отбросил бы руками введённую грань 6.
+    vi.spyOn(Math, 'random').mockReturnValue(0); // виртуальный бросок дал бы 1, не 6
+    const auth = await authHeaderFor(1010);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'virtual' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+    expect(created.game.diceMode).toBe('virtual');
+
+    const rollRes = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}/rolls`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientEventId: 'e1', value: 6, diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(rollRes.status).toBe(200);
+    const rolled = await readJson(rollRes);
+    expect(rolled.value).toBe(6); // использована человеком выбранная грань, а не серверный рандом
+    expect(rolled.game.diceMode).toBe('physical');
+    expect(rolled.game.isBorn).toBe(true);
+
+    // Новый режим реально сохранён в D1, а не только в ответе на этот запрос.
+    const getRes = await worker.fetch(req(`/api/v1/games/${created.game.id}`, { headers: { Authorization: auth } }), env, fakeCtx);
+    const fetched = await readJson(getRes);
+    expect(fetched.game.diceMode).toBe('physical');
+  });
+
+  it('переключение diceMode во время партии (п.1): бросок с diceMode="virtual" переводит партию с физического режима на виртуальный без ожидания value от клиента', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99); // виртуальный бросок даёт 6
+    const auth = await authHeaderFor(1011);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+    expect(created.game.diceMode).toBe('physical');
+
+    // Раньше (баг) такой запрос без value упал бы с 400, потому что сервер
+    // всё ещё считал партию физической и требовал руками введённое значение.
+    const rollRes = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}/rolls`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientEventId: 'e1', diceMode: 'virtual' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(rollRes.status).toBe(200);
+    const rolled = await readJson(rollRes);
+    expect(rolled.value).toBe(6);
+    expect(rolled.game.diceMode).toBe('virtual');
+  });
+
+  it('роллс с некорректным diceMode отклоняется 400', async () => {
+    const auth = await authHeaderFor(1012);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+
+    const rollRes = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}/rolls`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientEventId: 'e1', value: 6, diceMode: 'bogus' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(rollRes.status).toBe(400);
+  });
+
   it('завершённая партия отклоняет новые броски (409)', async () => {
     const auth = await authHeaderFor(999);
     const createRes = await worker.fetch(

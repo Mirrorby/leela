@@ -108,9 +108,25 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
     return json({ error: 'not_found' }, { status: 404 });
   }
 
-  const body = await readJson<{ clientEventId?: unknown; value?: unknown }>(request);
+  const body = await readJson<{ clientEventId?: unknown; value?: unknown; diceMode?: unknown }>(request);
   if (!body || typeof body.clientEventId !== 'string' || !body.clientEventId) {
     return json({ error: 'invalid_body', detail: 'clientEventId (string) is required' }, { status: 400 });
+  }
+
+  // Баг п.1 (найден на клиенте): переключатель "Кубик: виртуальный/физический"
+  // на GameHome раньше менял режим ТОЛЬКО в локальном React-состоянии — сервер
+  // как хранитель истины продолжал использовать diceMode со времени создания
+  // партии, и следующий бросок либо игнорировал руками выбранную грань
+  // (переключились на физический — сервер всё равно бросал сам), либо падал с
+  // 400 "value is required" (переключились на виртуальный — клиент больше не
+  // присылал value, а сервер всё ещё ждал его). Клиент теперь всегда
+  // присылает свой текущий diceMode вместе с броском; здесь применяем его к
+  // партии ДО того, как решаем, кто бросает кубик (сервер или человек).
+  if (body.diceMode !== undefined) {
+    if (body.diceMode !== 'physical' && body.diceMode !== 'virtual') {
+      return json({ error: 'invalid_body', detail: 'diceMode must be "physical" or "virtual"' }, { status: 400 });
+    }
+    game.diceMode = body.diceMode as DiceMode;
   }
 
   const ruleset = getRuleset(game.rulesetId);

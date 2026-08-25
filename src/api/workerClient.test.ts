@@ -55,6 +55,19 @@ describe('workerClient', () => {
     expect(JSON.parse(init?.body as string)).toEqual({ clientEventId: 'evt-1', value: 6 });
   });
 
+  it('rollOnServer включает diceMode в тело, если он передан (переключение режима во время партии)', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse({ game: { id: 'g1' }, events: [], value: 3 }));
+
+    await rollOnServer('g1', 'evt-1', undefined, 'physical');
+
+    const [, init] = fetchSpy.mock.calls[0];
+    const sentBody = JSON.parse(init?.body as string);
+    expect(sentBody).toEqual({ clientEventId: 'evt-1', diceMode: 'physical' });
+    expect('value' in sentBody).toBe(false);
+  });
+
   it('бросает WorkerApiError с detail из тела ответа при ошибке сервера', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ error: 'not_found' }, 404));
 

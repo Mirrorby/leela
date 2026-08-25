@@ -76,8 +76,14 @@ export function createFakeD1(): D1Database {
             request,
           });
         } else if (normalized.startsWith('UPDATE games SET')) {
+          // dice_mode добавлен в реальный запрос (worker/src/games/repository.ts,
+          // баг п.1) — порядок и состав bind-параметров здесь должен зеркалить
+          // тот запрос, иначе фейковая БД молча припишет значения не своим
+          // полям (именно так проявился этот баг в тестах: current_cell
+          // получил бы dice_mode).
           const [
             status,
+            dice_mode,
             current_cell,
             is_born,
             rolls_json,
@@ -92,6 +98,7 @@ export function createFakeD1(): D1Database {
           if (row) {
             Object.assign(row, {
               status,
+              dice_mode,
               current_cell,
               is_born,
               rolls_json,

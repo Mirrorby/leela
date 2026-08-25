@@ -90,10 +90,24 @@ export interface RollResult {
  * его передавать не нужно и не следует — сервер сам бросает кубик и
  * возвращает результат в ответе; см. комментарий в worker/src/index.ts про
  * тонкий клиент.
+ *
+ * diceMode передаётся, если известен текущий выбранный режим (см.
+ * useGameSession.roll()) — партия на сервере хранит diceMode со времени
+ * создания и сама не узнает о переключателе на GameHome, если ей об этом не
+ * сообщить явно этим полем (баг п.1: раньше это поле не отправлялось вовсе,
+ * из-за чего переключение режима во время партии молча не работало).
  */
-export async function rollOnServer(gameId: string, clientEventId: string, value?: number): Promise<RollResult> {
+export async function rollOnServer(
+  gameId: string,
+  clientEventId: string,
+  value?: number,
+  diceMode?: DiceMode
+): Promise<RollResult> {
+  const body: { clientEventId: string; value?: number; diceMode?: DiceMode } = { clientEventId };
+  if (value !== undefined) body.value = value;
+  if (diceMode !== undefined) body.diceMode = diceMode;
   return apiFetch<RollResult>(`/api/v1/games/${gameId}/rolls`, {
     method: 'POST',
-    body: JSON.stringify(value === undefined ? { clientEventId } : { clientEventId, value }),
+    body: JSON.stringify(body),
   });
 }

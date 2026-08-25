@@ -115,7 +115,7 @@ export function useGameSession() {
       setIsBusy(true);
       setError(null);
       try {
-        const result = await rollOnServer(game.id, nextClientEventId(), value);
+        const result = await rollOnServer(game.id, nextClientEventId(), value, game.diceMode);
         const { game: nextGame, events, value: diceValue } = result;
 
         const moveEvent = events.find((e) => e.type === 'MOVE');
