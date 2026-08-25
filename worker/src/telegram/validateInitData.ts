@@ -27,6 +27,28 @@ export interface ValidatedInitData {
   authDate: number;
 }
 
+/**
+ * Причина отказа — НЕ секрет, безопасно показывать в ответе API как есть.
+ * Не путать с самим BOT_TOKEN или содержимым initData — их сюда не кладём.
+ * Ввёл после того, как единственным сигналом на проде было общее "invalid
+ * or expired initData", по которому нельзя было отличить рассинхрон часов
+ * от банально неверно скопированного секрета в Cloudflare — самая частая
+ * причина именно hash_mismatch, а не что-то в самом алгоритме.
+ */
+export type InitDataFailureReason =
+  | 'missing_bot_token'
+  | 'unparseable'
+  | 'missing_hash'
+  | 'hash_mismatch'
+  | 'missing_auth_date'
+  | 'stale_auth_date'
+  | 'missing_user'
+  | 'malformed_user';
+
+export type InitDataValidationResult =
+  | ({ ok: true } & ValidatedInitData)
+  | { ok: false; reason: InitDataFailureReason };
+
 // initData Mini App выпускается заново при каждом открытии приложения —
 // сутки с запасом достаточно, чтобы не мешать обычному использованию, но
 // не принимать данные многодневной давности (например, слитые/залогированные).
@@ -43,18 +65,18 @@ function toHex(buffer: ArrayBuffer): string {
   return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function validateInitData(initData: string, botToken: string): Promise<ValidatedInitData | null> {
-  if (!initData || !botToken) return null;
+export async function validateInitData(initData: string, botToken: string): Promise<InitDataValidationResult> {
+  if (!botToken) return { ok: false, reason: 'missing_bot_token' };
 
   let params: URLSearchParams;
   try {
     params = new URLSearchParams(initData);
   } catch {
-    return null;
+    return { ok: false, reason: 'unparseable' };
   }
 
   const hash = params.get('hash');
-  if (!hash) return null;
+  if (!hash) return { ok: false, reason: 'missing_hash' };
   params.delete('hash');
 
   const dataCheckString = [...params.keys()]
@@ -65,25 +87,27 @@ export async function validateInitData(initData: string, botToken: string): Prom
   const secretKey = await hmacSha256(new TextEncoder().encode('WebAppData'), botToken);
   const expectedHash = toHex(await hmacSha256(secretKey, dataCheckString));
 
-  if (expectedHash !== hash) return null;
+  if (expectedHash !== hash) return { ok: false, reason: 'hash_mismatch' };
 
   const authDate = Number(params.get('auth_date'));
-  if (!Number.isFinite(authDate)) return null;
+  if (!Number.isFinite(authDate)) return { ok: false, reason: 'missing_auth_date' };
   const ageSeconds = Date.now() / 1000 - authDate;
-  if (ageSeconds > MAX_INIT_DATA_AGE_SECONDS || ageSeconds < -CLOCK_SKEW_TOLERANCE_SECONDS) return null;
+  if (ageSeconds > MAX_INIT_DATA_AGE_SECONDS || ageSeconds < -CLOCK_SKEW_TOLERANCE_SECONDS) {
+    return { ok: false, reason: 'stale_auth_date' };
+  }
 
   const userRaw = params.get('user');
-  if (!userRaw) return null;
+  if (!userRaw) return { ok: false, reason: 'missing_user' };
 
   let user: TelegramUser;
   try {
     user = JSON.parse(userRaw);
   } catch {
-    return null;
+    return { ok: false, reason: 'malformed_user' };
   }
-  if (!user || typeof user.id !== 'number') return null;
+  if (!user || typeof user.id !== 'number') return { ok: false, reason: 'malformed_user' };
 
-  return { telegramId: String(user.id), user, authDate };
+  return { ok: true, telegramId: String(user.id), user, authDate };
 }
 
 /** Достаёт initData из заголовка `Authorization: tma <initData>`. */

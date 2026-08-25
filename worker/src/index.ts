@@ -47,10 +47,16 @@ async function requireAuth(request: Request, env: Env): Promise<ValidatedInitDat
   if (!initData) {
     return json({ error: 'unauthorized', detail: 'missing Authorization: tma <initData> header' }, { status: 401 });
   }
-  const validated = await validateInitData(initData, env.BOT_TOKEN);
-  if (!validated) {
-    return json({ error: 'unauthorized', detail: 'invalid or expired initData' }, { status: 401 });
+  const result = await validateInitData(initData, env.BOT_TOKEN);
+  if (!result.ok) {
+    // reason безопасно показывать как есть — это метка причины ("hash_mismatch",
+    // "stale_auth_date" и т.п.), а не сам секрет и не содержимое initData.
+    // hash_mismatch на проде почти всегда значит одно: BOT_TOKEN в Cloudflare
+    // не совпадает байт-в-байт с токеном из @BotFather (лишний пробел/перенос
+    // строки при копировании — самая частая причина).
+    return json({ error: 'unauthorized', detail: `invalid initData: ${result.reason}` }, { status: 401 });
   }
+  const { ok: _ok, ...validated } = result;
   return validated;
 }
 
