@@ -27,7 +27,11 @@
   max-height: min(78vh, 640px);
   overflow-y: auto;
   box-sizing: border-box;
-  background: var(--bg-mid);
+  /* var(--surface) вместо var(--bg-mid): в светлой теме модалка должна
+     чётко отделяться от фона страницы (за ней всё ещё видна мандала и
+     градиент), а не сливаться с одним из его же оттенков — --surface это
+     более плотный тёплый белый специально для таких "твёрдых" карточек. */
+  background: var(--surface);
   border: 1px solid var(--pill-border);
   border-radius: 22px;
   padding: 18px 20px calc(20px + var(--safe-area-bottom, 0px));

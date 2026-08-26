@@ -44,12 +44,15 @@
 
 /* Этап 7.5: первая поверхность, где реально может всплыть сетевая ошибка
    (создание партии / бросок кубика теперь запросы к Worker'у). Тёплый
-   красноватый тон — не выбивается из золотисто-фиолетовой палитры, но
-   явно читается как предупреждение на тёмном фоне. */
+   красноватый тон — не выбивается из золотисто-бежевой пастельной палитры,
+   но явно читается как предупреждение. Значения пересчитаны под светлый
+   фон (светлый розовый текст на тёмном фоне читался хорошо, на светлом
+   был бы почти невидим — теперь наоборот, тёмно-красный текст на бледно-
+   розовой подложке). */
 .screen-error {
-  color: #ffb4a8;
-  background: rgba(255, 90, 70, 0.12);
-  border: 1px solid rgba(255, 90, 70, 0.32);
+  color: #b3261e;
+  background: rgba(211, 71, 55, 0.1);
+  border: 1px solid rgba(211, 71, 55, 0.32);
   border-radius: 12px;
   padding: 10px 14px;
   font-size: 14px;
@@ -143,8 +146,8 @@
 
 .screen button.danger {
   background: transparent;
-  border-color: rgba(224, 100, 100, 0.5);
-  color: #e08a8a;
+  border-color: rgba(179, 38, 30, 0.4);
+  color: #b3261e;
 }
 
 .screen textarea,
@@ -153,12 +156,12 @@
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--pill-border);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--pill-bg);
   color: var(--cream);
 }
 
 .screen textarea::placeholder {
-  color: rgba(241, 228, 201, 0.4);
+  color: rgba(61, 39, 18, 0.4);
 }
 
 .dice-manual-input {
@@ -197,7 +200,7 @@
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--pill-border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--pill-bg);
 }
 
 .game-list-item strong {
@@ -241,7 +244,7 @@
   padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid var(--pill-border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--pill-bg);
 }
 
 .history-index {
@@ -320,16 +323,20 @@
   white-space: nowrap;
 }
 
+/* Значения пересчитаны под светлый фон (было светло-розовый/светло-зелёный
+   текст, читаемый на тёмном фоне, — на светлом почти невидим; теперь
+   текст темнее, подложка чуть плотнее для собственного контраста бейджа
+   с фоном страницы). */
 .history-transition-badge.snake {
-  background: rgba(179, 64, 43, 0.18);
-  border: 1px solid rgba(179, 64, 43, 0.4);
-  color: #e08a72;
+  background: rgba(179, 64, 43, 0.16);
+  border: 1px solid rgba(179, 64, 43, 0.45);
+  color: #8a2e1a;
 }
 
 .history-transition-badge.arrow {
-  background: rgba(78, 139, 87, 0.18);
-  border: 1px solid rgba(78, 139, 87, 0.4);
-  color: #8fcb9a;
+  background: rgba(63, 122, 72, 0.16);
+  border: 1px solid rgba(63, 122, 72, 0.45);
+  color: #2f6b3a;
 }
 
 .history-rolls {

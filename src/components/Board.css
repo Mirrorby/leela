@@ -65,11 +65,14 @@
 
 .board-cell[role='button']:hover .board-cell-hit,
 .board-cell[role='button']:focus-visible .board-cell-hit {
-  fill: rgba(255, 255, 255, 0.14);
+  /* Было белое лёгкое свечение поверх тёмной доски — на светлой пастельной
+     доске (см. scripts/gen_board_v2.py) белое почти не видно; тёплый
+     золотой тон вместо этого. */
+  fill: rgba(184, 134, 11, 0.16);
 }
 
 .board-cell[role='button']:active .board-cell-hit {
-  fill: rgba(255, 255, 255, 0.24);
+  fill: rgba(184, 134, 11, 0.28);
 }
 
 .board-cell[role='button']:focus-visible {

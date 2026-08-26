@@ -11,9 +11,9 @@
 <rect x="293.0" y="613.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="648.0" r="1.6" fill="#999999" />
 <text x="328.0" y="625.0" font-size="10" fill="#999999" text-anchor="middle">4</text>
-<rect x="373.0" y="613.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="648.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="625.0" font-size="10" fill="#F2B44D" text-anchor="middle">5</text>
+<rect x="373.0" y="613.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="648.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="625.0" font-size="10" fill="#B8860B" text-anchor="middle">5</text>
 <rect x="453.0" y="613.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="648.0" r="1.6" fill="#999999" />
 <text x="488.0" y="625.0" font-size="10" fill="#999999" text-anchor="middle">6</text>
@@ -38,9 +38,9 @@
 <rect x="453.0" y="533.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="568.0" r="1.6" fill="#999999" />
 <text x="488.0" y="545.0" font-size="10" fill="#999999" text-anchor="middle">13</text>
-<rect x="373.0" y="533.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="568.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="545.0" font-size="10" fill="#F2B44D" text-anchor="middle">14</text>
+<rect x="373.0" y="533.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="568.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="545.0" font-size="10" fill="#B8860B" text-anchor="middle">14</text>
 <rect x="293.0" y="533.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="568.0" r="1.6" fill="#999999" />
 <text x="328.0" y="545.0" font-size="10" fill="#999999" text-anchor="middle">15</text>
@@ -65,9 +65,9 @@
 <rect x="293.0" y="453.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="488.0" r="1.6" fill="#999999" />
 <text x="328.0" y="465.0" font-size="10" fill="#999999" text-anchor="middle">22</text>
-<rect x="373.0" y="453.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="488.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="465.0" font-size="10" fill="#F2B44D" text-anchor="middle">23</text>
+<rect x="373.0" y="453.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="488.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="465.0" font-size="10" fill="#B8860B" text-anchor="middle">23</text>
 <rect x="453.0" y="453.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="488.0" r="1.6" fill="#999999" />
 <text x="488.0" y="465.0" font-size="10" fill="#999999" text-anchor="middle">24</text>
@@ -92,9 +92,9 @@
 <rect x="453.0" y="373.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="408.0" r="1.6" fill="#999999" />
 <text x="488.0" y="385.0" font-size="10" fill="#999999" text-anchor="middle">31</text>
-<rect x="373.0" y="373.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="408.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="385.0" font-size="10" fill="#F2B44D" text-anchor="middle">32</text>
+<rect x="373.0" y="373.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="408.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="385.0" font-size="10" fill="#B8860B" text-anchor="middle">32</text>
 <rect x="293.0" y="373.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="408.0" r="1.6" fill="#999999" />
 <text x="328.0" y="385.0" font-size="10" fill="#999999" text-anchor="middle">33</text>
@@ -119,9 +119,9 @@
 <rect x="293.0" y="293.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="328.0" r="1.6" fill="#999999" />
 <text x="328.0" y="305.0" font-size="10" fill="#999999" text-anchor="middle">40</text>
-<rect x="373.0" y="293.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="328.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="305.0" font-size="10" fill="#F2B44D" text-anchor="middle">41</text>
+<rect x="373.0" y="293.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="328.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="305.0" font-size="10" fill="#B8860B" text-anchor="middle">41</text>
 <rect x="453.0" y="293.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="328.0" r="1.6" fill="#999999" />
 <text x="488.0" y="305.0" font-size="10" fill="#999999" text-anchor="middle">42</text>
@@ -146,9 +146,9 @@
 <rect x="453.0" y="213.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="248.0" r="1.6" fill="#999999" />
 <text x="488.0" y="225.0" font-size="10" fill="#999999" text-anchor="middle">49</text>
-<rect x="373.0" y="213.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="248.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="225.0" font-size="10" fill="#F2B44D" text-anchor="middle">50</text>
+<rect x="373.0" y="213.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="248.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="225.0" font-size="10" fill="#B8860B" text-anchor="middle">50</text>
 <rect x="293.0" y="213.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="248.0" r="1.6" fill="#999999" />
 <text x="328.0" y="225.0" font-size="10" fill="#999999" text-anchor="middle">51</text>
@@ -173,9 +173,9 @@
 <rect x="293.0" y="133.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="168.0" r="1.6" fill="#999999" />
 <text x="328.0" y="145.0" font-size="10" fill="#999999" text-anchor="middle">58</text>
-<rect x="373.0" y="133.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="168.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="145.0" font-size="10" fill="#F2B44D" text-anchor="middle">59</text>
+<rect x="373.0" y="133.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="168.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="145.0" font-size="10" fill="#B8860B" text-anchor="middle">59</text>
 <rect x="453.0" y="133.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="168.0" r="1.6" fill="#999999" />
 <text x="488.0" y="145.0" font-size="10" fill="#999999" text-anchor="middle">60</text>
@@ -200,9 +200,9 @@
 <rect x="453.0" y="53.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="488.0" cy="88.0" r="1.6" fill="#999999" />
 <text x="488.0" y="65.0" font-size="10" fill="#999999" text-anchor="middle">67</text>
-<rect x="373.0" y="53.0" width="70" height="70" rx="14" fill="none" stroke="#F2B44D" stroke-width="1" stroke-dasharray="none" />
-<circle cx="408.0" cy="88.0" r="1.6" fill="#F2B44D" />
-<text x="408.0" y="65.0" font-size="10" fill="#F2B44D" text-anchor="middle">68</text>
+<rect x="373.0" y="53.0" width="70" height="70" rx="14" fill="none" stroke="#B8860B" stroke-width="1" stroke-dasharray="none" />
+<circle cx="408.0" cy="88.0" r="1.6" fill="#B8860B" />
+<text x="408.0" y="65.0" font-size="10" fill="#B8860B" text-anchor="middle">68</text>
 <rect x="293.0" y="53.0" width="70" height="70" rx="14" fill="none" stroke="#999999" stroke-width="1" stroke-dasharray="3 3" />
 <circle cx="328.0" cy="88.0" r="1.6" fill="#999999" />
 <text x="328.0" y="65.0" font-size="10" fill="#999999" text-anchor="middle">69</text>

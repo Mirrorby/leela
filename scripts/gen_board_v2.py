@@ -40,8 +40,8 @@ CHAKRA_COLORS = [
     "#F7D774",  # 8. Клетка 68 — финиш/золото
 ]
 
-GOLD = "#F2B44D"
-GOLD_DIM = "#E8A23D"
+GOLD = "#B8860B"
+GOLD_DIM = "#8F6A0C"
 DARK_TEXT = "#2B1608"
 
 # Реальные переходы — сняты с физической доски пользователя (не рефересная
@@ -86,14 +86,18 @@ COORDS = {cid: cell_xy(cid) for cid in range(1, 73)}
 
 
 def row_base_fill(cell_id: int) -> str:
-    """Базовая заливка обычной (не чакра) клетки — интерполяция от тёмного
-    амбера внизу доски к более светлому апельсиновому оттенку наверху,
-    чтобы вся сетка тоже читалась как единый тёплый градиент."""
+    """Базовая заливка обычной (не чакра) клетки — светлый пастельный
+    редизайн: раньше тут была интерполяция от тёмного амбера снизу к
+    тёплому апельсиновому коричневому сверху (тёмная тема), теперь —
+    интерполяция в пределах светлой бежево-молочной палитры (те же тона,
+    что фон приложения и мандала), чтобы сетка клеток читалась как единое
+    целое со всем остальным интерфейсом, а не как отдельный тёмный остров
+    на светлом фоне."""
     _, y = COORDS[cell_id]
     row_from_bottom = round((HEIGHT - MARGIN - CELL / 2 - y) / CELL)
     t = row_from_bottom / (ROWS - 1)
-    c0 = (0x35, 0x1C, 0x0B)  # низ — тёмный амбер-коричневый
-    c1 = (0x8A, 0x3F, 0x14)  # верх — тёплый апельсиновый коричневый
+    c0 = (0xF5, 0xE1, 0xB8)  # низ — тёплый песочный беж
+    c1 = (0xFF, 0xFB, 0xF3)  # верх — молочно-белый
     r = round(c0[0] + (c1[0] - c0[0]) * t)
     g = round(c0[1] + (c1[1] - c0[1]) * t)
     b = round(c0[2] + (c1[2] - c0[2]) * t)
@@ -296,7 +300,10 @@ def build_svg(draw_transitions: bool = False) -> str:
     points = " ".join(f"{COORDS[c][0]:.1f},{COORDS[c][1]:.1f}" for c in range(1, 73))
     parts.append(
         f'<polyline points="{points}" fill="none" stroke="{GOLD}" stroke-width="1.2" '
-        f'stroke-opacity="0.2" stroke-dasharray="2 7" stroke-linecap="round" />'
+        # Непрозрачность чуть выше, чем в тёмной теме (было 0.2) — тот же
+        # GOLD теперь темнее и мог бы потеряться на светлых клетках при
+        # исходной прозрачности.
+        f'stroke-opacity="0.32" stroke-dasharray="2 7" stroke-linecap="round" />'
     )
 
     # Змеи и стрелы — только если явно попросили (см. docstring). По
@@ -329,10 +336,13 @@ def build_svg(draw_transitions: bool = False) -> str:
     parts.append(petal_ring(x1, y1, 9, 34, 16, 0.5, 1.2, GOLD))
 
     # Декор клетки финиша (68, вершина духовного столбца) — двойной лотос
-    # покрупнее, золотой.
+    # покрупнее, золотой. Раньше здесь был светлый кремовый ("#FBE8CE") —
+    # специально светлый тон для контраста на тёмной клетке; на светлой
+    # пастельной клетке светлый кремовый практически не виден, поэтому
+    # теперь тот же насыщенный GOLD, что и остальной декор.
     x68, y68 = COORDS[68]
-    parts.append(petal_ring(x68, y68, 26, 30, 10, 0.7, 1.6, "#FBE8CE"))
-    parts.append(petal_ring(x68, y68, 14, 17, 8, 0.85, 1.4, "#FBE8CE"))
+    parts.append(petal_ring(x68, y68, 26, 30, 10, 0.7, 1.6, GOLD))
+    parts.append(petal_ring(x68, y68, 14, 17, 8, 0.85, 1.4, GOLD))
 
     parts.append("</svg>")
     return "\n".join(parts)
@@ -351,7 +361,7 @@ def build_alignment_guide() -> str:
         x, y = COORDS[cid]
         is_chakra = cid in CHAKRA_CELLS
         rx, ry = x - TILE / 2, y - TILE / 2
-        stroke = "#F2B44D" if is_chakra else "#999999"
+        stroke = GOLD if is_chakra else "#999999"
         parts.append(
             f'<rect x="{rx:.1f}" y="{ry:.1f}" width="{TILE}" height="{TILE}" rx="14" '
             f'fill="none" stroke="{stroke}" stroke-width="1" stroke-dasharray="{"none" if is_chakra else "3 3"}" />'
