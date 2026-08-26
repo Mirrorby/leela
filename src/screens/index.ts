@@ -9,7 +9,6 @@ import { RequestInput } from './RequestInput';
 import { DiceModeSelect } from './DiceModeSelect';
 import { GameHome } from './GameHome';
 import { History } from './History';
-import { FinishScreen } from './FinishScreen';
 import { Summary } from './Summary';
 
 // Редизайн (этап 7): DiceRoll, TurnResult, CellCard, TransitionEvent,
@@ -17,6 +16,11 @@ import { Summary } from './Summary';
 // переехал внутрь GameHome (модалка). Сами файлы экранов удалены из
 // src/screens/ (их разметка — там, где ещё нужна, — либо переиспользована в
 // components/CellContent.tsx, либо инлайнена прямо в GameHome.tsx).
+//
+// FinishScreen (п.8 правок) удалён по той же логике: промежуточный шаг
+// "Партия завершена" с кнопкой-переходом на итог убран, при завершении
+// партии GameHome сразу переходит на Summary напрямую (см. normalizeScreenName
+// в App.tsx про совместимость со старыми сохранёнными партиями).
 export const screens: Record<ScreenName, ComponentType<ScreenProps>> = {
   Splash,
   MyGames,
@@ -25,6 +29,5 @@ export const screens: Record<ScreenName, ComponentType<ScreenProps>> = {
   DiceModeSelect,
   GameHome,
   History,
-  FinishScreen,
   Summary,
 };

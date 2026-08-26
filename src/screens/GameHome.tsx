@@ -6,7 +6,7 @@ import { Board, BOARD_LEAP_DURATION_MS, BOARD_STEP_DURATION_MS } from '../compon
 import { Modal } from '../components/Modal';
 import { CellContent } from '../components/CellContent';
 import { getBoardCoordinates, getBoardImageSrc, getBoardOverlaySrcs } from '../game/boardCoordinates';
-import { DiceIcon } from '../components/icons';
+import { DiceIcon, GamesListIcon } from '../components/icons';
 import { hapticImpact, hapticNotification } from '../telegram/haptics';
 
 // Сколько крутится кубик, прежде чем на грани "проявится" результат (виртуальный режим).
@@ -42,6 +42,13 @@ const FLASH_EVENT_LABELS: Partial<Record<RollEventType, string>> = {
   DUPLICATE_IGNORED: 'Повторный бросок проигнорирован.',
 };
 
+// Перелёт (актуально для клеток 69–71 — зона перед финишем, где годится
+// только точное попадание): движок и здесь закрывает ход обычным MOVE
+// (см. gameEngine.ts), просто фишка остаётся на месте — это НЕ отдельный
+// RollEventType, а detail у MOVE ('overshoot: stayed in place'), поэтому
+// своя константа, а не запись в FLASH_EVENT_LABELS выше.
+const OVERSHOOT_FLASH = 'Слишком много очков — фишка остаётся на месте, попробуй ещё раз.';
+
 type DiceStage = 'idle' | 'physical-pick' | 'rolling' | 'face' | 'moving';
 
 type Sheet = { kind: 'result'; cellId: number; rollValue: number; events: RollEvent[] } | { kind: 'peek'; cellId: number };
@@ -57,9 +64,10 @@ function hasEvent(events: RollEvent[], type: RollEventType): boolean {
  * цепочка — оркестрация внутри одного компонента: кубик крутится на месте,
  * фишка едет по доске (это умеет сама Board, см. fromCell/viaCell), а по
  * итогам показывается один и тот же Modal с разным содержимым. Splash,
- * Intro, RequestInput, DiceModeSelect, MyGames, History, Summary,
- * FinishScreen остаются полноценными экранами — их эта переработка не
- * касается.
+ * Intro, RequestInput, DiceModeSelect, MyGames, History, Summary остаются
+ * полноценными экранами — их эта переработка не касается. FinishScreen
+ * (промежуточный шаг "Партия завершена") убран отдельной правкой (п.8) —
+ * при завершении партии переходим сразу на Summary.
  */
 export function GameHome({ session, nav }: ScreenProps) {
   const { game, ruleset, lastMove, cellById } = session;
@@ -105,8 +113,16 @@ export function GameHome({ session, nav }: ScreenProps) {
     ? 'Ждём рождения — нужна 6'
     : game.status === 'FINISHED'
       ? 'Путь пройден'
-      : `Клетка ${game.currentCell}`;
-  const topSnippet = currentCellContent?.shortDescription || currentCellContent?.name || game.request;
+      : `Клетка №${game.currentCell}`;
+  // п.5 правок: раньше здесь показывался либо shortDescription клетки, либо,
+  // если контента ещё не было (например, самая первая отрисовка после
+  // рождения, пока getBoardCoordinates/cellById не подтянулись), запрос
+  // пользователя (game.request) как временный фоллбек — так на верхнюю
+  // плитку иногда просачивался длинный текст запроса. Убрано по правке:
+  // до рождения плитка вообще без второй строки, после — только санскритское
+  // название клетки; краткое описание клетки теперь смотрят по тапу
+  // (открывает модалку CellContent), как и раньше для полного описания.
+  const topSnippet = game.isBorn ? currentCellContent?.sanskrit : undefined;
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t));
@@ -161,6 +177,24 @@ export function GameHome({ session, nav }: ScreenProps) {
       // рождение, отклонённый бросок) — рождение обрабатываем отдельной
       // веткой ДО общего "ничего не произошло" сценария.
       const isBirth = hasEvent(events, 'BIRTH_SUCCESS');
+
+      // Баг п.3: перелёт (клетки 69–71 требуют точного попадания на финиш)
+      // раньше открывал ту же модалку с карточкой клетки, что и обычный
+      // успешный ход, — потому что gameEngine и в этом случае эмитит MOVE
+      // (move здесь НЕ null, см. useGameSession.roll: fromCell === landedCell
+      // === finalCell === текущая клетка). Из-за этого карточка одной и той
+      // же клетки заново всплывала на каждую неудачную попытку докатиться до
+      // финиша. Перелёт распознаём по detail у MOVE, а не по отдельному
+      // типу события — движок специально не заводит для этого свой
+      // RollEventType (см. комментарий в gameEngine.ts).
+      const moveEvent = events.find((e) => e.type === 'MOVE');
+      const isOvershoot = moveEvent?.detail?.startsWith('overshoot') ?? false;
+
+      if (isOvershoot) {
+        setDiceStage('idle');
+        showFlash(OVERSHOOT_FLASH);
+        return;
+      }
 
       if (!move && !isBirth) {
         // Рождение не удалось / бросок отклонён движком — фишка не
@@ -256,7 +290,7 @@ export function GameHome({ session, nav }: ScreenProps) {
           {topSnippet && <span className="cell-snippet">{topSnippet}</span>}
         </div>
         <button className="icon-button" aria-label="Мои партии" onClick={() => nav.push('MyGames')}>
-          ⋯
+          <GamesListIcon />
         </button>
       </div>
 
@@ -275,8 +309,8 @@ export function GameHome({ session, nav }: ScreenProps) {
 
       <div className="game-home-bottom">
         {game.status === 'FINISHED' ? (
-          <button className="primary" onClick={() => nav.push('FinishScreen')}>
-            К завершению
+          <button className="primary" onClick={() => nav.push('Summary')}>
+            К итогу партии
           </button>
         ) : diceStage === 'physical-pick' ? (
           <div className="dice-physical-pick">
@@ -347,10 +381,13 @@ export function GameHome({ session, nav }: ScreenProps) {
                   className="primary"
                   onClick={() => {
                     closeSheet();
-                    nav.push('FinishScreen');
+                    // п.8 правок: раньше вело на промежуточный экран
+                    // "Партия завершена" с ещё одной кнопкой-переходом на
+                    // итог — лишний шаг убран, идём сразу на сам итог.
+                    nav.push('Summary');
                   }}
                 >
-                  Завершить путь
+                  Итог партии
                 </button>
               ) : hasEvent(sheet.events, 'EXTRA_ROLL_GRANTED') ? (
                 <>

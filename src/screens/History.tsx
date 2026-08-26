@@ -1,17 +1,16 @@
 import type { ScreenProps } from '../navigation/ScreenProps';
+import { MoveTile } from '../components/MoveTile';
 
 /**
- * История ходов (переоформлена — п.6 правок после ревью). Раньше это был
- * голый <ol> со строкой "27 → 23 (броски: 1)" — не читалось на фоне
- * остального интерфейса. Теперь каждый ход — карточка в общем языке
- * приложения (те же pill/card паттерны, что и "Мои партии"): номер хода
- * в золотом кружке, крупный переход клетка→клетка, и если сработал
- * переход (змея тянет вниз / стрела поднимает вверх) — отдельная
- * подпись, потому что это самая интересная часть хода, её не должно быть
- * видно только по мелким циферкам бросков.
+ * История ходов (переоформлена — п.6 правок). Раньше это был голый <ol> со
+ * строкой "27 → 23 (броски: 1)" — не читалось на фоне остального
+ * интерфейса, а номера клеток без названий ничего не говорили о смысле
+ * хода. Разметка одного хода теперь переиспользуемый MoveTile (см.
+ * components/MoveTile.tsx) — тот же компонент использует и Summary
+ * (screens/Summary.tsx), чтобы не дублировать вёрстку.
  */
 export function History({ session, nav }: ScreenProps) {
-  const { game } = session;
+  const { game, cellById } = session;
   if (!game) return null;
 
   return (
@@ -25,43 +24,9 @@ export function History({ session, nav }: ScreenProps) {
             {game.turns.length} {turnsWord(game.turns.length)}
           </p>
           <ol className="history-list">
-            {game.turns.map((turn, i) => {
-              const isBirth = turn.startCell === 0;
-              const hasTransition = turn.landedCell !== turn.finalCell;
-              const isSnake = hasTransition && turn.finalCell < turn.landedCell;
-              return (
-                <li key={turn.id} className="history-row">
-                  <span className="history-index">{i + 1}</span>
-                  <div className="history-main">
-                    <div className="history-move">
-                      {isBirth ? (
-                        <span className="history-birth">Рождение фишки</span>
-                      ) : (
-                        <>
-                          <span className="history-cell">{turn.startCell}</span>
-                          <span className="history-arrow" aria-hidden="true">
-                            →
-                          </span>
-                          <span className="history-cell history-cell--final">{turn.finalCell}</span>
-                        </>
-                      )}
-                      {hasTransition && (
-                        <span className={`history-transition-badge${isSnake ? ' snake' : ' arrow'}`}>
-                          {isSnake ? 'змея' : 'стрела'} · через {turn.landedCell}
-                        </span>
-                      )}
-                    </div>
-                    <div className="history-rolls">
-                      {turn.rolls.map((r) => (
-                        <span key={r.id} className="history-roll-pip">
-                          {r.value}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
+            {game.turns.map((turn, i) => (
+              <MoveTile key={turn.id} turn={turn} index={i} cellById={cellById} />
+            ))}
           </ol>
         </>
       )}

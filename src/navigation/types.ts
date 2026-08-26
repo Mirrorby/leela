@@ -17,7 +17,6 @@ export type ScreenName =
   | 'DiceModeSelect'
   | 'GameHome'
   | 'History'
-  | 'FinishScreen'
   | 'Summary';
 
 export interface ScreenEntry {

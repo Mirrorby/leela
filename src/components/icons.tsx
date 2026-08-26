@@ -49,3 +49,21 @@ export function DiceIcon({ value }: { value?: number }) {
     </svg>
   );
 }
+
+/**
+ * Иконка "Мои партии" (п.4 правок). Раньше здесь были три точки "⋯" —
+ * визуально это "ещё меню/опции", а не "список моих партий", и путалось с
+ * тремя полосками "☰" слева, которые как раз и есть настоящее меню. Три
+ * полоски слева (в меню) остаются как есть — их не трогаем. Здесь —
+ * стопка карточек: каждая сохранённая партия в "Моих партиях" уже
+ * визуально card-based список (game-list-item), так что стопка карточек
+ * читается однозначно как "список моих партий", в отличие от точек.
+ */
+export function GamesListIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="7" y="3" width="14" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" opacity="0.55" />
+      <rect x="3" y="7" width="14" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" fill="currentColor" fillOpacity="0.08" />
+    </svg>
+  );
+}

@@ -60,17 +60,33 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, var(--bg-accent) 70%, var(--bg-bottom) 100%);
+  /* Фактический фон теперь рисует body::before (см. ниже) — здесь только
+     обычный нейтральный фон-фоллбек на случай, если псевдоэлемент почему-то
+     не отрендерился (например, очень старый браузер без поддержки ::before). */
+  background: var(--bg-top);
 }
 
 /* Мандала — фиксированный декоративный слой позади всего интерфейса.
-   background-attachment: fixed, чтобы не скроллилась вместе с контентом. */
-body {
+   Раньше это было `body { background-attachment: fixed }`, но у этого
+   приёма есть известный баг мобильных WebView (в т.ч. Telegram Mini App):
+   background-attachment: fixed на самом body корректно рисуется только в
+   пределах ПЕРВОГО экрана — стоит проскроллить длинный контент (например,
+   длинную "Историю ходов"), и ниже начальной высоты вьюпорта фон обрывается,
+   видна пустота. Правильный обход — не полагаться на "прибитый" фон вообще,
+   а завести отдельный НАСТОЯЩИЙ position: fixed элемент (псевдоэлемент
+   ::before), который браузер позиционирует относительно вьюпорта честно, а
+   не как background-фокус. z-index: -1 держит его позади всего контента
+   body, inset: 0 — растягивает ровно на весь видимый вьюпорт всегда, вне
+   зависимости от того, насколько длинная страница под ним. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
   background-image: var(--bg-mandala-url), linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 35%, var(--bg-accent) 70%, var(--bg-bottom) 100%);
   background-repeat: no-repeat, no-repeat;
   background-size: 130% auto, 100% 100%;
   background-position: top center, top center;
-  background-attachment: fixed, fixed;
 }
 
 #root {

@@ -22,19 +22,21 @@ import './App.css';
 // влияет, поэтому normalizeScreenName подстраховывает восстановление:
 // любое незнакомое имя экрана превращается в GameHome — экран партии,
 // который теперь и так вмещает в себя весь этот флоу.
-const KNOWN_SCREENS = new Set<ScreenName>([
-  'Splash',
-  'MyGames',
-  'Intro',
-  'RequestInput',
-  'DiceModeSelect',
-  'GameHome',
-  'History',
-  'FinishScreen',
-  'Summary',
-]);
+// Восстановление старых сохранённых партий: незнакомое имя экрана
+// превращается в GameHome — экран партии, который теперь и так вмещает в
+// себя весь этот флоу.
+//
+// FinishScreen (п.8 правок): раньше отдельный промежуточный шаг "Партия
+// завершена" с кнопкой на итог партии. Убран из стека совсем — теперь при
+// завершении партии сразу показываем сам итог (см. GameHome.tsx). Но
+// сохранённая на диске партия старого пользователя может ссылаться именно
+// на 'FinishScreen' как на текущий экран (запись сделана до этой правки) —
+// такую партию открываем прямо на Summary, а не на GameHome, чтобы не
+// откатывать человека на доску, если он уже дошёл до конца пути.
+const KNOWN_SCREENS = new Set<ScreenName>(['Splash', 'MyGames', 'Intro', 'RequestInput', 'DiceModeSelect', 'GameHome', 'History', 'Summary']);
 
 function normalizeScreenName(name: string): ScreenName {
+  if (name === 'FinishScreen') return 'Summary';
   return KNOWN_SCREENS.has(name as ScreenName) ? (name as ScreenName) : 'GameHome';
 }
 
