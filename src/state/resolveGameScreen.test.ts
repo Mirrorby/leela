@@ -23,7 +23,7 @@ function makeGame(overrides: Partial<GameState> = {}): GameState {
 }
 
 describe('resolveGameScreen', () => {
-  it('баг "Продолжить заводит новую партию": предыгровой экран (RequestInput), сохранённый для партии с прогрессом (не WAITING_FOR_BIRTH), подменяется на GameHome', () => {
+  it('баг "Продолжить заводит новую партию": предыгровой экран (RequestInput), сохранённый для партии с прогрессом, подменяется на GameHome', () => {
     const game = makeGame({ status: 'IN_PROGRESS' });
     expect(resolveGameScreen('RequestInput', game)).toBe('GameHome');
     expect(resolveGameScreen('DiceModeSelect', game)).toBe('GameHome');
@@ -35,14 +35,21 @@ describe('resolveGameScreen', () => {
     expect(resolveGameScreen('RequestInput', game)).toBe('GameHome');
   });
 
-  it('партия ещё реально WAITING_FOR_BIRTH — предыгровой экран оставляем как есть (это не баг, а нормальное состояние)', () => {
+  it('тот же баг воспроизводится и для WAITING_FOR_BIRTH — партия уже СОЗДАНА на сервере (есть id), просто фишка ещё не родилась; предыгровой экран для неё — та же ловушка "Продолжить создаёт новую партию", подменяется на GameHome так же', () => {
+    // Первая версия фикса ошибочно считала WAITING_FOR_BIRTH "законным"
+    // предыгровым состоянием и НЕ подменяла экран — баг сохранялся именно
+    // для этого случая (воспроизведено на реальном сценарии пользователя:
+    // партия "ждёт рождения · клетка 0" с screen: 'RequestInput').
     const game = makeGame({ status: 'WAITING_FOR_BIRTH', isBorn: false });
-    expect(resolveGameScreen('RequestInput', game)).toBe('RequestInput');
-    expect(resolveGameScreen('DiceModeSelect', game)).toBe('DiceModeSelect');
+    expect(resolveGameScreen('RequestInput', game)).toBe('GameHome');
+    expect(resolveGameScreen('DiceModeSelect', game)).toBe('GameHome');
+    expect(resolveGameScreen('Intro', game)).toBe('GameHome');
   });
 
-  it('game отсутствует (null) — экран не трогаем (нечего сопоставлять с прогрессом)', () => {
+  it('game отсутствует (null) — экран не трогаем (нечего сопоставлять с прогрессом; это законный путь ДО создания партии — Intro/RequestInput/DiceModeSelect без session.game вообще)', () => {
     expect(resolveGameScreen('RequestInput', null)).toBe('RequestInput');
+    expect(resolveGameScreen('DiceModeSelect', null)).toBe('DiceModeSelect');
+    expect(resolveGameScreen('Intro', null)).toBe('Intro');
   });
 
   it('экраны вне "предыгровых" (GameHome, History, Summary, MyGames, Splash) никогда не подменяются', () => {
