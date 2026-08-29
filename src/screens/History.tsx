@@ -8,6 +8,11 @@ import { MoveTile } from '../components/MoveTile';
  * хода. Разметка одного хода теперь переиспользуемый MoveTile (см.
  * components/MoveTile.tsx) — тот же компонент использует и Summary
  * (screens/Summary.tsx), чтобы не дублировать вёрстку.
+ *
+ * Кнопка меню в шапке (справа от заголовка) — тот же переход "в меню"
+ * (сброс стека на Splash), что и у иконки "☰" на GameHome, только здесь
+ * своя строка-шапка (.screen-header-row), а не полноценный topbar с
+ * плиткой партии — Истории отдельная плитка не нужна, только заголовок.
  */
 export function History({ session, nav }: ScreenProps) {
   const { game, cellById } = session;
@@ -15,7 +20,12 @@ export function History({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-history">
-      <h1>История ходов</h1>
+      <div className="screen-header-row">
+        <h1>История ходов</h1>
+        <button className="icon-button" aria-label="В меню" onClick={() => nav.resetTo('Splash')}>
+          ☰
+        </button>
+      </div>
       {game.turns.length === 0 ? (
         <p className="muted">Ходов пока не было — брось кубик, и они появятся здесь.</p>
       ) : (

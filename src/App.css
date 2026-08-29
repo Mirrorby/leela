@@ -64,6 +64,21 @@
   margin: 0 0 4px;
 }
 
+/* Строка "заголовок + кнопка меню" — используется на экранах без полного
+   topbar (см. .game-home-topbar), где нужен только заголовок и кнопка
+   меню справа от него (например История ходов). h1 внутри теряет свой
+   обычный нижний отступ — им управляет gap самой строки. */
+.screen-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.screen-header-row h1 {
+  margin: 0;
+}
+
 .screen h2 {
   color: var(--text-h);
   margin: 0;
