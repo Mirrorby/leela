@@ -5,6 +5,15 @@ on:
     branches: [main]
     paths:
       - "worker/**"
+      # worker/src/game/rulesetLoader.ts импортирует classic-v1.json НАПРЯМУЮ
+      # из src/data/rulesets (единственный источник правды для фронта и
+      # воркера, см. worker/src/game/rulesetLoader.ts) — правка одного этого
+      # файла без изменений внутри worker/ раньше НЕ триггерила редеплой
+      # воркера, из-за чего задеплоенный воркер продолжал играть по старым
+      # (забандленным на момент прошлого деплоя) правилам, пока фронтенд уже
+      # обновился. Явно перечисляем всё, что воркер импортирует извне своей
+      # папки.
+      - "src/data/rulesets/**"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch: {}
 
@@ -21,7 +30,7 @@ jobs:
         with:
           node-version: 20
 
-      - run: npm install
+      - run: npm ci
 
       - run: npm test
 

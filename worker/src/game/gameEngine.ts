@@ -50,10 +50,29 @@ export function canRoll(game: GameState): boolean {
   return game.status === 'WAITING_FOR_BIRTH' || game.status === 'IN_PROGRESS';
 }
 
+/**
+ * Ищет уже сохранённый Roll с этим clientEventId (в открытом ходе или в
+ * закрытых turns) и возвращает его целиком — не просто true/false. Нужен
+ * вызывающему коду (worker/src/index.ts:handleRoll) ДО генерации значения
+ * кубика и ДО применения diceMode: раньше повторный (дублирующийся) запрос
+ * на бросок всё равно прогонял virtual-режим через rollVirtualDice() и
+ * возвращал этот СВЕЖЕСГЕНЕРИРОВАННЫЙ (случайный, не тот, что реально
+ * выпал и был сохранён) value в ответе — хотя состояние партии оставалось
+ * от первого, настоящего броска. Клиент в этом случае показывал бы на
+ * кубике грань, которая не соответствует тому, что реально произошло.
+ */
+export function findRollByClientEventId(game: GameState, clientEventId: string): Roll | undefined {
+  const inOpenTurn = game.currentTurnRolls.find((r) => r.clientEventId === clientEventId);
+  if (inOpenTurn) return inOpenTurn;
+  for (const turn of game.turns) {
+    const found = turn.rolls.find((r) => r.clientEventId === clientEventId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function findProcessedRoll(game: GameState, clientEventId: string): boolean {
-  const inOpenTurn = game.currentTurnRolls.some((r) => r.clientEventId === clientEventId);
-  if (inOpenTurn) return true;
-  return game.turns.some((t) => t.rolls.some((r) => r.clientEventId === clientEventId));
+  return findRollByClientEventId(game, clientEventId) !== undefined;
 }
 
 function closeCurrentTurn(game: GameState, startCell: number, landedCell: number, finalCell: number): void {

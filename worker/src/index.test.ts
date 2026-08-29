@@ -205,11 +205,93 @@ describe('worker routes', () => {
 
     expect(second.events).toEqual([{ type: 'DUPLICATE_IGNORED' }]);
     expect(second.game.currentCell).toBe(first.game.currentCell);
-    // На дубликате value просто отражает то, что было прислано в ЭТОМ
-    // запросе (клиент код это не показывает пользователю — см.
-    // FLASH_EVENT_LABELS.DUPLICATE_IGNORED), важно лишь что поле есть и
-    // валидно по форме контракта ответа.
-    expect(typeof second.value).toBe('number');
+    // value на дубликате обязан быть ТЕМ ЖЕ, что реально выпало и было
+    // сохранено при первом броске — не просто "какое-то число" (см. баг,
+    // найден при ревью: раньше virtual-режим прогонял rollVirtualDice()
+    // заново на каждый ретрай и возвращал случайное новое значение, хотя
+    // сохранённое состояние партии не менялось).
+    expect(second.value).toBe(first.value);
+  });
+
+  it('повторный бросок в virtual-режиме — value на дубликате берётся из сохранённого броска, а не генерируется заново', async () => {
+    const auth = await authHeaderFor(778);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'virtual' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+
+    const rollOnce = () =>
+      worker
+        .fetch(
+          req(`/api/v1/games/${created.game.id}/rolls`, {
+            method: 'POST',
+            headers: { Authorization: auth, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientEventId: 'virtual-same-id' }),
+          }),
+          env,
+          fakeCtx
+        )
+        .then(readJson);
+
+    const first = await rollOnce();
+    const second = await rollOnce();
+
+    expect(second.events).toEqual([{ type: 'DUPLICATE_IGNORED' }]);
+    expect(second.value).toBe(first.value);
+  });
+
+  it('дубликат-ретрай с одновременно другим diceMode в теле — не применяет и не отражает смену режима (она не сохранена в БД)', async () => {
+    const auth = await authHeaderFor(779);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+
+    await worker.fetch(
+      req(`/api/v1/games/${created.game.id}/rolls`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientEventId: 'mode-switch-id', value: 6 }),
+      }),
+      env,
+      fakeCtx
+    );
+
+    // Ретрай того же clientEventId, но с diceMode: 'virtual' — имитирует
+    // клиента, который между двумя попытками успел переключить режим.
+    const retryRes = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}/rolls`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientEventId: 'mode-switch-id', diceMode: 'virtual' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const retry = await readJson(retryRes);
+
+    expect(retry.events).toEqual([{ type: 'DUPLICATE_IGNORED' }]);
+    // Режим в БД не должен был поменяться — GET партии обязан вернуть
+    // всё ещё 'physical', а не 'virtual' из проигнорированного ретрая.
+    const getRes = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}`, { headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    const fetched = await readJson(getRes);
+    expect(fetched.game.diceMode).toBe('physical');
   });
 
   it('виртуальный режим: значение генерирует сервер, любой value от клиента игнорируется', async () => {
@@ -528,6 +610,27 @@ describe('worker routes', () => {
 
     const res2 = await worker.fetch(req('/api/v1/games?limit=0', { headers: { Authorization: auth } }), env, fakeCtx);
     expect(res2.status).toBe(400);
+  });
+
+  it('пагинация: некорректный cursor отклоняется 400, а не тихо отдаёт первую страницу (баг, найден при ревью)', async () => {
+    const auth = await authHeaderFor(1403);
+    await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'one', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const res = await worker.fetch(
+      req('/api/v1/games?cursor=not-valid-base64-not-a-real-cursor', { headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(400);
+    const body = await readJson(res);
+    expect(body.error).toBe('invalid_query');
   });
 
   it('пагинация: limit сверх потолка (100) не отклоняется, а тихо ужимается сервером', async () => {

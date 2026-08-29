@@ -65,6 +65,23 @@ function toHex(buffer: ArrayBuffer): string {
   return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * Сравнение без ранней остановки по несовпадению символа — не даёт узнать
+ * секрет/хэш по времени ответа. Тот же приём, что и в
+ * telegram/webhook.ts:timingSafeEqual для WEBHOOK_SECRET; здесь отдельная
+ * копия (не импортируем друг у друга), чтобы telegram/webhook и
+ * telegram/validateInitData оставались независимыми модулями без
+ * скрытой связи между собой.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 export async function validateInitData(initData: string, botToken: string): Promise<InitDataValidationResult> {
   if (!botToken) return { ok: false, reason: 'missing_bot_token' };
 
@@ -87,7 +104,7 @@ export async function validateInitData(initData: string, botToken: string): Prom
   const secretKey = await hmacSha256(new TextEncoder().encode('WebAppData'), botToken);
   const expectedHash = toHex(await hmacSha256(secretKey, dataCheckString));
 
-  if (expectedHash !== hash) return { ok: false, reason: 'hash_mismatch' };
+  if (!timingSafeEqual(expectedHash, hash)) return { ok: false, reason: 'hash_mismatch' };
 
   const authDate = Number(params.get('auth_date'));
   if (!Number.isFinite(authDate)) return { ok: false, reason: 'missing_auth_date' };

@@ -1,9 +1,9 @@
-import { createNewGame, processRoll, canRoll } from './game/gameEngine';
+import { createNewGame, processRoll, canRoll, findRollByClientEventId } from './game/gameEngine';
 import { isValidDiceValue, rollVirtualDice } from './game/diceEngine';
 import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
-import { insertGame, updateGame, getGameById, listGamesByUser } from './games/repository';
+import { insertGame, updateGame, getGameById, listGamesByUser, InvalidCursorError } from './games/repository';
 import type { DiceMode } from './types/game';
 
 export interface Env {
@@ -97,8 +97,15 @@ async function handleListGames(request: Request, env: Env, auth: ValidatedInitDa
   if (limitParam !== null && (!Number.isFinite(limit) || limit! < 1)) {
     return json({ error: 'invalid_query', detail: 'limit must be a positive integer' }, { status: 400 });
   }
-  const page = await listGamesByUser(env.DB, auth.telegramId, { limit, cursor: cursorParam });
-  return json(page);
+  try {
+    const page = await listGamesByUser(env.DB, auth.telegramId, { limit, cursor: cursorParam });
+    return json(page);
+  } catch (err) {
+    if (err instanceof InvalidCursorError) {
+      return json({ error: 'invalid_query', detail: 'cursor is malformed' }, { status: 400 });
+    }
+    throw err;
+  }
 }
 
 async function handleGetGame(env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
@@ -119,6 +126,22 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
   const body = await readJson<{ clientEventId?: unknown; value?: unknown; diceMode?: unknown }>(request);
   if (!body || typeof body.clientEventId !== 'string' || !body.clientEventId) {
     return json({ error: 'invalid_body', detail: 'clientEventId (string) is required' }, { status: 400 });
+  }
+
+  // Проверка дубликата — НАМЕРЕННО до применения diceMode и до генерации
+  // значения кубика (баг, найден при ревью, п.7): раньше повторный запрос
+  // с уже обработанным clientEventId (легитимный ретрай клиента после
+  // потерянного ответа) всё равно прогонялся через rollVirtualDice() —
+  // ответ содержал СЛУЧАЙНОЕ новое значение вместо того, что реально
+  // выпало и сохранилось при первом (настоящем) броске, и, если тело
+  // ретрая заодно несло другой diceMode, ответ показывал этот diceMode
+  // как применённый, хотя запись в БД не менялась (updateGame для
+  // дубликата не вызывается). Возвращаем и state, и value из уже
+  // сохранённого броска — ответ на ретрай должен быть неотличим от ответа
+  // на исходный успешный запрос.
+  const existingRoll = findRollByClientEventId(game, body.clientEventId);
+  if (existingRoll) {
+    return json({ game, events: [{ type: 'DUPLICATE_IGNORED' }], value: existingRoll.value });
   }
 
   // Баг п.1 (найден на клиенте): переключатель "Кубик: виртуальный/физический"

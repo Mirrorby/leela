@@ -198,12 +198,25 @@ const MAX_PAGE_SIZE = 100;
  * клиент передаёт её как есть, полученную из nextCursor предыдущего
  * ответа — ему не нужно знать формат.
  */
+/** Брошено, если клиент передал `cursor`, который не удалось декодировать —
+ * отличаем эту ситуацию от "курсора нет вовсе", чтобы не отдавать молча
+ * первую страницу вместо явной 400 (см. handleListGames в index.ts). */
+export class InvalidCursorError extends Error {
+  constructor() {
+    super('invalid cursor');
+    this.name = 'InvalidCursorError';
+  }
+}
+
 export async function listGamesByUser(
   db: D1Database,
   telegramId: string,
   options: { limit?: number; cursor?: string | null } = {}
 ): Promise<ListGamesPage> {
   const limit = Math.min(Math.max(1, options.limit ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
+  if (options.cursor && decodeCursor(options.cursor) === null) {
+    throw new InvalidCursorError();
+  }
   const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
   const query = cursor
