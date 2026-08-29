@@ -408,6 +408,145 @@ describe('worker routes', () => {
     );
     expect(rejectedRes.status).toBe(409);
   });
+
+  it('optimistic concurrency: конфликт версии при записи возвращает 409, а не тихо теряет бросок', async () => {
+    // Настоящую гонку двух параллельных запросов в однопоточном тесте не
+    // устроить (каждый handleRoll сам читает САМУЮ свежую версию перед
+    // записью — если бы мы просто заранее продвинули версию другим
+    // запросом, второй запрос эту свежую версию и прочитал бы, конфликта
+    // не было бы). Поэтому конфликт имитируем напрямую: подменяем
+    // updateGame() на один вызов так, будто конкурентная запись успела
+    // произойти МЕЖДУ чтением и записью текущего запроса — это и есть тот
+    // самый сценарий, который optimistic concurrency обязан ловить.
+    const repo = await import('./games/repository');
+    const auth = await authHeaderFor(1300);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+
+    const updateSpy = vi.spyOn(repo, 'updateGame').mockResolvedValueOnce({ success: false });
+
+    const rollRes = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}/rolls`, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientEventId: 'birth', value: 6 }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(rollRes.status).toBe(409);
+    const body = await readJson(rollRes);
+    expect(body.error).toBe('version_conflict');
+    updateSpy.mockRestore();
+
+    // Партия в БД НЕ должна была измениться — конфликтный бросок не применён.
+    const afterConflict = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}`, { headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    const stillUnborn = await readJson(afterConflict);
+    expect(stillUnborn.game.isBorn).toBe(false);
+    expect(stillUnborn.game.status).toBe('WAITING_FOR_BIRTH');
+  });
+
+  it('optimistic concurrency: реальный (не замоканный) конфликт версии в repository.updateGame — устаревшая expectedVersion не проходит условный UPDATE', async () => {
+    const repo = await import('./games/repository');
+    const auth = await authHeaderFor(1301);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+    const telegramId = String(1301);
+
+    // Первое обновление с верной version=1 — должно пройти.
+    const first = await repo.updateGame(env.DB, { ...created.game, request: 'изменено-1' }, telegramId, 1);
+    expect(first.success).toBe(true);
+
+    // Повторное обновление с ТОЙ ЖЕ (уже устаревшей) version=1 — версия в
+    // БД уже стала 2 после первого успешного апдейта, условный UPDATE не
+    // должен задеть ни одной строки.
+    const second = await repo.updateGame(env.DB, { ...created.game, request: 'изменено-2' }, telegramId, 1);
+    expect(second.success).toBe(false);
+  });
+
+  it('пагинация: limit ограничивает размер страницы, nextCursor ведёт на следующую, на последней странице nextCursor = null', async () => {
+    const auth = await authHeaderFor(1400);
+    const requests = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    for (const r of requests) {
+      await worker.fetch(
+        req('/api/v1/games', {
+          method: 'POST',
+          headers: { Authorization: auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ request: r, diceMode: 'physical' }),
+        }),
+        env,
+        fakeCtx
+      );
+    }
+
+    const seenIds = new Set<string>();
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const url = cursor ? `/api/v1/games?limit=2&cursor=${encodeURIComponent(cursor)}` : '/api/v1/games?limit=2';
+      const res = await worker.fetch(req(url, { headers: { Authorization: auth } }), env, fakeCtx);
+      expect(res.status).toBe(200);
+      const body = await readJson(res);
+      expect(body.games.length).toBeLessThanOrEqual(2);
+      for (const g of body.games) {
+        expect(seenIds.has(g.id)).toBe(false); // ни одна партия не должна повториться между страницами
+        seenIds.add(g.id);
+      }
+      cursor = body.nextCursor;
+      pages += 1;
+      expect(pages).toBeLessThan(10); // защита от бесконечного цикла, если пагинация сломана
+    } while (cursor);
+
+    expect(seenIds.size).toBe(requests.length);
+    expect(pages).toBe(3); // 5 партий по 2 на страницу -> 2,2,1
+  });
+
+  it('пагинация: некорректный limit (не число / <1) отклоняется 400', async () => {
+    const auth = await authHeaderFor(1401);
+    const res = await worker.fetch(req('/api/v1/games?limit=abc', { headers: { Authorization: auth } }), env, fakeCtx);
+    expect(res.status).toBe(400);
+
+    const res2 = await worker.fetch(req('/api/v1/games?limit=0', { headers: { Authorization: auth } }), env, fakeCtx);
+    expect(res2.status).toBe(400);
+  });
+
+  it('пагинация: limit сверх потолка (100) не отклоняется, а тихо ужимается сервером', async () => {
+    const auth = await authHeaderFor(1402);
+    await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'only-one', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const res = await worker.fetch(req('/api/v1/games?limit=99999', { headers: { Authorization: auth } }), env, fakeCtx);
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.games).toHaveLength(1);
+    expect(body.nextCursor).toBeNull();
+  });
 });
 
 describe('/telegram/webhook routing', () => {

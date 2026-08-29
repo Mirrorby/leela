@@ -89,24 +89,32 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
   return json({ game }, { status: 201 });
 }
 
-async function handleListGames(env: Env, auth: ValidatedInitData): Promise<Response> {
-  const games = await listGamesByUser(env.DB, auth.telegramId);
-  return json({ games });
+async function handleListGames(request: Request, env: Env, auth: ValidatedInitData): Promise<Response> {
+  const url = new URL(request.url);
+  const limitParam = url.searchParams.get('limit');
+  const cursorParam = url.searchParams.get('cursor');
+  const limit = limitParam ? Number(limitParam) : undefined;
+  if (limitParam !== null && (!Number.isFinite(limit) || limit! < 1)) {
+    return json({ error: 'invalid_query', detail: 'limit must be a positive integer' }, { status: 400 });
+  }
+  const page = await listGamesByUser(env.DB, auth.telegramId, { limit, cursor: cursorParam });
+  return json(page);
 }
 
 async function handleGetGame(env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
-  const game = await getGameById(env.DB, gameId, auth.telegramId);
-  if (!game) {
+  const found = await getGameById(env.DB, gameId, auth.telegramId);
+  if (!found) {
     return json({ error: 'not_found' }, { status: 404 });
   }
-  return json({ game });
+  return json({ game: found.game });
 }
 
 async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
-  const game = await getGameById(env.DB, gameId, auth.telegramId);
-  if (!game) {
+  const found = await getGameById(env.DB, gameId, auth.telegramId);
+  if (!found) {
     return json({ error: 'not_found' }, { status: 404 });
   }
+  const { game, version } = found;
 
   const body = await readJson<{ clientEventId?: unknown; value?: unknown; diceMode?: unknown }>(request);
   if (!body || typeof body.clientEventId !== 'string' || !body.clientEventId) {
@@ -159,7 +167,25 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
 
   const isDuplicate = events.some((e) => e.type === 'DUPLICATE_IGNORED');
   if (!isDuplicate) {
-    await updateGame(env.DB, nextGame, auth.telegramId);
+    // Optimistic concurrency control (см. migrations/0004_add_version_column.sql
+    // и updateGame в repository.ts): между строкой getGameById() выше и этим
+    // updateGame() кто-то другой теоретически мог успеть сохранить СВОЮ
+    // версию этой же партии (два устройства/вкладки с одним аккаунтом,
+    // повторный запрос после таймаута и т.п.) — раньше update просто писал
+    // поверх без проверки, "потерянное обновление" молча пропадало. Если
+    // updateGame сигнализирует, что version уже не совпадает — не считаем
+    // nextGame применённым и отвечаем 409, а не 200 с данными, которые на
+    // самом деле не сохранились.
+    const { success } = await updateGame(env.DB, nextGame, auth.telegramId, version);
+    if (!success) {
+      return json(
+        {
+          error: 'version_conflict',
+          detail: 'Партия была изменена в другом месте (другое устройство/вкладка) между чтением и записью — этот бросок не сохранён, обновите партию и попробуйте снова.',
+        },
+        { status: 409 }
+      );
+    }
   }
 
   return json({ game: nextGame, events, value });
@@ -190,7 +216,7 @@ export default {
       // /api/v1/games
       if (url.pathname === '/api/v1/games') {
         if (request.method === 'POST') return handleCreateGame(request, env, auth);
-        if (request.method === 'GET') return handleListGames(env, auth);
+        if (request.method === 'GET') return handleListGames(request, env, auth);
         return json({ error: 'method_not_allowed' }, { status: 405 });
       }
 

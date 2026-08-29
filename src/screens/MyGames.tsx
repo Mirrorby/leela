@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { listPersistedGames, removePersistedGame, setActivePersistedGameId } from '../state/persistence';
+import { resolveGameScreen } from '../state/resolveGameScreen';
 
 const STATUS_LABELS: Record<string, string> = {
   WAITING_FOR_BIRTH: 'ждёт рождения',
@@ -18,7 +19,13 @@ export function MyGames({ session, nav }: ScreenProps) {
     const record = games.find((g) => g.id === id);
     if (!record) return;
     session.restore(record);
-    nav.resetTo(record.screen);
+    // Найденный баг: "Продолжить" незавершённую партию иногда открывал
+    // RequestInput/DiceModeSelect с восстановленным старым текстом запроса
+    // вместо самой игры — а прохождение этих экранов заново создавало
+    // СОВЕРШЕННО НОВУЮ партию, оставляя старую (с реальным прогрессом)
+    // недоступной. См. state/resolveGameScreen.ts — тут та же
+    // подстраховка, что и при восстановлении активной партии на старте.
+    nav.resetTo(resolveGameScreen(record.screen, record.game));
   };
 
   const handleDelete = (id: string) => {

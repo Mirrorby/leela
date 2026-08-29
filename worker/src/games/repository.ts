@@ -21,6 +21,7 @@ export interface GameRow {
   consecutive_sixes: number;
   position_before_six_series: number;
   request: string;
+  version: number;
 }
 
 export function rowToGameState(row: GameRow): GameState {
@@ -87,8 +88,8 @@ export async function insertGame(db: D1Database, game: GameState, telegramId: st
       `INSERT INTO games (
         id, telegram_id, status, ruleset_id, ruleset_version, dice_mode,
         current_cell, is_born, rolls_json, turns_json, created_at, updated_at,
-        consecutive_sixes, position_before_six_series, request
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        consecutive_sixes, position_before_six_series, request, version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
     )
     .bind(
       p.id,
@@ -110,7 +111,22 @@ export async function insertGame(db: D1Database, game: GameState, telegramId: st
     .run();
 }
 
-export async function updateGame(db: D1Database, game: GameState, telegramId: string): Promise<void> {
+/**
+ * Optimistic concurrency control (см. migrations/0004_add_version_column.sql):
+ * UPDATE выполняется с условием WHERE version = expectedVersion (та версия,
+ * что была прочитана перед тем, как считать nextGame через processRoll) и
+ * одновременно инкрементирует version. Если между чтением и записью кто-то
+ * другой уже сохранил свою версию — WHERE не совпадёт ни для одной строки,
+ * `.meta.changes` будет 0, и мы возвращаем { success: false } не трогая
+ * данные — вызывающий код (handleRoll) обязан ответить клиенту 409, а не
+ * молча считать, что запись прошла.
+ */
+export async function updateGame(
+  db: D1Database,
+  game: GameState,
+  telegramId: string,
+  expectedVersion: number
+): Promise<{ success: boolean }> {
   const p = gameStateToRowParams(game, telegramId);
   // WHERE ... AND telegram_id = ?: партия не может "перепрыгнуть" к другому
   // владельцу через update, даже теоретически — дублирует проверку доступа
@@ -120,12 +136,12 @@ export async function updateGame(db: D1Database, game: GameState, telegramId: st
   // handleRoll в index.ts) применялась только к ОТВЕТУ конкретного запроса,
   // но никогда не долетала до D1 — уже следующий GET/roll видел старый
   // diceMode со времени создания партии.
-  await db
+  const result = await db
     .prepare(
       `UPDATE games SET
         status = ?, dice_mode = ?, current_cell = ?, is_born = ?, rolls_json = ?, turns_json = ?,
-        updated_at = ?, consecutive_sixes = ?, position_before_six_series = ?
-      WHERE id = ? AND telegram_id = ?`
+        updated_at = ?, consecutive_sixes = ?, position_before_six_series = ?, version = version + 1
+      WHERE id = ? AND telegram_id = ? AND version = ?`
     )
     .bind(
       p.status,
@@ -138,24 +154,98 @@ export async function updateGame(db: D1Database, game: GameState, telegramId: st
       p.consecutive_sixes,
       p.position_before_six_series,
       p.id,
-      p.telegram_id
+      p.telegram_id,
+      expectedVersion
     )
     .run();
+  return { success: (result.meta?.changes ?? 0) > 0 };
 }
 
-/** Партия конкретного пользователя. Возвращает null, если партии нет ИЛИ она принадлежит другому telegram_id. */
-export async function getGameById(db: D1Database, id: string, telegramId: string): Promise<GameState | null> {
+/** Партия конкретного пользователя вместе с её текущей version (нужна
+ * вызывающему коду для последующего условного updateGame). Возвращает
+ * null, если партии нет ИЛИ она принадлежит другому telegram_id. */
+export async function getGameById(
+  db: D1Database,
+  id: string,
+  telegramId: string
+): Promise<{ game: GameState; version: number } | null> {
   const row = await db
     .prepare('SELECT * FROM games WHERE id = ? AND telegram_id = ?')
     .bind(id, telegramId)
     .first<GameRow>();
-  return row ? rowToGameState(row) : null;
+  return row ? { game: rowToGameState(row), version: row.version } : null;
 }
 
-export async function listGamesByUser(db: D1Database, telegramId: string): Promise<GameState[]> {
+export interface ListGamesPage {
+  games: GameState[];
+  nextCursor: string | null;
+}
+
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+/**
+ * Пагинация "если партий станет много" — курсорная (keyset), не
+ * OFFSET/LIMIT: у OFFSET на каждой следующей странице СУБД всё равно
+ * пересчитывает и пропускает все предыдущие строки (дороже с ростом
+ * количества партий), и результат "плывёт", если между запросами страниц
+ * что-то вставили/удалили. Курсор — это (updated_at, id) последней
+ * партии на предыдущей странице; следующая страница — все строки СТРОГО
+ * "раньше" этой точки в том же порядке сортировки (updated_at DESC, id
+ * DESC как детерминированный тай-брейк на случай одинакового updated_at).
+ *
+ * cursor — непрозрачная для клиента строка (base64 от "updated_at:id"),
+ * клиент передаёт её как есть, полученную из nextCursor предыдущего
+ * ответа — ему не нужно знать формат.
+ */
+export async function listGamesByUser(
+  db: D1Database,
+  telegramId: string,
+  options: { limit?: number; cursor?: string | null } = {}
+): Promise<ListGamesPage> {
+  const limit = Math.min(Math.max(1, options.limit ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
+  const cursor = options.cursor ? decodeCursor(options.cursor) : null;
+
+  const query = cursor
+    ? `SELECT * FROM games WHERE telegram_id = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))
+       ORDER BY updated_at DESC, id DESC LIMIT ?`
+    : `SELECT * FROM games WHERE telegram_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?`;
+  const params = cursor
+    ? [telegramId, cursor.updatedAt, cursor.updatedAt, cursor.id, limit + 1]
+    : [telegramId, limit + 1];
+
   const result = await db
-    .prepare('SELECT * FROM games WHERE telegram_id = ? ORDER BY updated_at DESC')
-    .bind(telegramId)
+    .prepare(query)
+    .bind(...params)
     .all<GameRow>();
-  return (result.results ?? []).map(rowToGameState);
+  const rows = result.results ?? [];
+
+  // Запрашиваем на одну строку больше (limit + 1): если она пришла — на
+  // сервере есть ещё данные за пределами этой страницы, отдаём курсор на
+  // последнюю строку ИЗ ВЫДАННОЙ страницы (не считая "разведочную"
+  // лишнюю); если не пришла — это последняя страница, nextCursor = null.
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor = hasMore && lastRow ? encodeCursor(lastRow.updated_at, lastRow.id) : null;
+
+  return { games: pageRows.map(rowToGameState), nextCursor };
+}
+
+function encodeCursor(updatedAt: number, id: string): string {
+  return btoa(`${updatedAt}:${id}`);
+}
+
+function decodeCursor(cursor: string): { updatedAt: number; id: string } | null {
+  try {
+    const decoded = atob(cursor);
+    const sep = decoded.lastIndexOf(':');
+    if (sep === -1) return null;
+    const updatedAt = Number(decoded.slice(0, sep));
+    const id = decoded.slice(sep + 1);
+    if (!Number.isFinite(updatedAt) || !id) return null;
+    return { updatedAt, id };
+  } catch {
+    return null;
+  }
 }

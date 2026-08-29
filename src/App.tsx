@@ -6,6 +6,7 @@ import {
   persistGame,
   setActivePersistedGameId,
 } from './state/persistence';
+import { resolveGameScreen } from './state/resolveGameScreen';
 import type { NavigationActions, ScreenEntry, ScreenName } from './navigation/types';
 import { screens } from './screens';
 import { captureInitData, initTelegramApp } from './telegram/telegramAdapter';
@@ -68,7 +69,11 @@ function App() {
       const record = loadPersistedGame(activeId);
       if (record) {
         session.restore(record);
-        setStack([{ name: normalizeScreenName(record.screen) }]);
+        // resolveGameScreen — самолечение записей, испорченных найденным
+        // багом "Продолжить заводит новую партию" (см. комментарий в
+        // state/resolveGameScreen.ts): если экран сохранён предыгровым, а у
+        // партии уже есть реальный прогресс, открываем сразу GameHome.
+        setStack([{ name: resolveGameScreen(normalizeScreenName(record.screen), record.game) }]);
       } else {
         // activeGameId ссылается на запись, которой больше нет (удалена
         // вручную или JSON повреждён) — просто забываем про неё.
@@ -111,7 +116,16 @@ function App() {
     persistGame({
       id: session.game.id,
       game: session.game,
-      screen: current.name,
+      // resolveGameScreen: см. комментарий в state/resolveGameScreen.ts —
+      // не даём предыгровому экрану (Intro/RequestInput/DiceModeSelect)
+      // попасть в снимок партии, у которой уже есть реальный прогресс. Без
+      // этого гонка между commit'ом setGame(newGame) в startGame() и
+      // последующим nav.resetTo('GameHome') в DiceModeSelect.choose() могла
+      // записать "текущий экран" как DiceModeSelect для уже начатой партии
+      // — а следующее "Продолжить" из "Моих партий" вместо возврата в игру
+      // заводило новую партию поверх старой (та оставалась недоступной
+      // "сиротой").
+      screen: resolveGameScreen(current.name, session.game),
       lastEvents: session.lastEvents,
       lastRollValue: session.lastRollValue,
       lastMove: session.lastMove,
