@@ -50,3 +50,27 @@ export function resolveGameScreen(screen: ScreenName, game: GameState | null): S
   }
   return screen;
 }
+
+// Редизайн (этап 7): шесть экранов флоу броска (DiceRoll, TurnResult,
+// CellCard, TransitionEvent, ExtraRollPrompt, TripleSixReset) убраны из
+// ScreenName и больше никогда не пушатся в стек — но старая сохранённая
+// партия в localStorage (или партия, у которой на сервере такой снимок
+// экрана никогда и не было — просто GameState с сервера, см. MyGames.tsx)
+// могла быть записана с одним из этих имён как "текущий экран". TS-тип на
+// рантайм-значение из JSON.parse/сервера не влияет, поэтому
+// normalizeScreenName подстраховывает восстановление в ОБЕИХ точках входа
+// (App.tsx при старте и MyGames.tsx при "Продолжить") — раньше эта
+// нормализация была только в App.tsx, и запись с незнакомым именем экрана,
+// выбранная через "Мои партии", падала бы при рендере (screens[name]
+// оказывался undefined).
+const KNOWN_SCREENS = new Set<ScreenName>(['Splash', 'MyGames', 'Intro', 'RequestInput', 'DiceModeSelect', 'GameHome', 'History', 'Summary']);
+
+export function normalizeScreenName(name: string): ScreenName {
+  // FinishScreen (п.8 правок): раньше отдельный промежуточный шаг "Партия
+  // завершена". Убран из стека — сохранённая до этой правки партия,
+  // ссылающаяся на 'FinishScreen', открывается прямо на Summary, а не на
+  // GameHome, чтобы не откатывать человека на доску, если он уже дошёл до
+  // конца пути.
+  if (name === 'FinishScreen') return 'Summary';
+  return KNOWN_SCREENS.has(name as ScreenName) ? (name as ScreenName) : 'GameHome';
+}

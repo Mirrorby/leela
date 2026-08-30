@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveGameScreen } from './resolveGameScreen';
+import { resolveGameScreen, normalizeScreenName } from './resolveGameScreen';
 import type { GameState } from '../types/game';
 
 function makeGame(overrides: Partial<GameState> = {}): GameState {
@@ -59,5 +59,27 @@ describe('resolveGameScreen', () => {
     expect(resolveGameScreen('Summary', game)).toBe('Summary');
     expect(resolveGameScreen('MyGames', game)).toBe('MyGames');
     expect(resolveGameScreen('Splash', game)).toBe('Splash');
+  });
+});
+
+describe('normalizeScreenName', () => {
+  it('известные имена экранов возвращает как есть', () => {
+    expect(normalizeScreenName('GameHome')).toBe('GameHome');
+    expect(normalizeScreenName('MyGames')).toBe('MyGames');
+  });
+
+  it('FinishScreen (убранный экран) превращается в Summary', () => {
+    expect(normalizeScreenName('FinishScreen')).toBe('Summary');
+  });
+
+  it('любое незнакомое имя (убранные экраны флоу броска, битые данные) превращается в GameHome', () => {
+    expect(normalizeScreenName('DiceRoll')).toBe('GameHome');
+    expect(normalizeScreenName('TurnResult')).toBe('GameHome');
+    expect(normalizeScreenName('totally-unknown')).toBe('GameHome');
+  });
+
+  it('используется MyGames.tsx при "Продолжить" (баг, найден при ревью): раньше нормализация была только в App.tsx, запись с незнакомым именем экрана падала бы при рендере через "Мои партии"', () => {
+    const game = makeGame({ status: 'IN_PROGRESS' });
+    expect(resolveGameScreen(normalizeScreenName('DiceRoll'), game)).toBe('GameHome');
   });
 });

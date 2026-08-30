@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { DiceMode, GameState, RollEvent } from '../types/game';
 import { getRuleset, getContentPack } from '../game/ruleset';
-import { createGameOnServer, rollOnServer, WorkerApiError } from '../api/workerClient';
+import { createGameOnServer, rollOnServer, getGameFromServer, WorkerApiError } from '../api/workerClient';
 import type { PersistedGame } from './persistence';
 
 // RULESET_ID — версия правил для НОВЫХ партий (используется до тех пор,
@@ -13,12 +13,6 @@ import type { PersistedGame } from './persistence';
 // версией.
 const RULESET_ID = 'classic-v1';
 const LANGUAGE = 'ru';
-
-let clientEventCounter = 0;
-function nextClientEventId(): string {
-  clientEventCounter += 1;
-  return `client-${Date.now()}-${clientEventCounter}`;
-}
 
 export interface LastMove {
   fromCell: number;
@@ -53,6 +47,30 @@ export function useGameSession() {
   const [lastMove, setLastMove] = useState<LastMove | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Найденный баг (ревью, п.2): clientEventId раньше генерировался ЗАНОВО
+  // при каждом вызове roll(), включая ручной повтор после сбоя. Из этого
+  // не получить того, ради чего вообще заводят idempotency-ключ: если
+  // запрос реально дошёл до сервера и применился, но ОТВЕТ потерялся
+  // (обрыв связи/таймаут — ровно сценарий, для которого ключ и нужен),
+  // повторное нажатие кубика с НОВЫМ id сервер обработает как отдельный,
+  // самостоятельный бросок — двойной ход (в physical-режиме особенно
+  // неприятно: человек уже переставил фишку на настоящей доске).
+  // pendingRollIdRef переживает неудачную попытку и переиспользуется
+  // следующим вызовом roll() для ТОЙ ЖЕ партии, пока не придёт успешный
+  // ответ — тогда очищается, и следующий бросок получит новый id.
+  const pendingRollIdRef = useRef<{ gameId: string; clientEventId: string } | null>(null);
+  const rollIdCounterRef = useRef(0);
+
+  function takeClientEventId(gameId: string): string {
+    if (pendingRollIdRef.current && pendingRollIdRef.current.gameId === gameId) {
+      return pendingRollIdRef.current.clientEventId;
+    }
+    rollIdCounterRef.current += 1;
+    const id = `client-${Date.now()}-${rollIdCounterRef.current}`;
+    pendingRollIdRef.current = { gameId, clientEventId: id };
+    return id;
+  }
 
   // Ruleset активной партии, а не константа — см. комментарий у RULESET_ID.
   const activeRulesetId = game?.rulesetId ?? RULESET_ID;
@@ -92,6 +110,7 @@ export function useGameSession() {
         setLastEvents([]);
         setLastRollValue(null);
         setLastMove(null);
+        pendingRollIdRef.current = null;
         return newGame;
       } catch (err) {
         setError(errorMessage(err, 'Не удалось создать партию — проверь соединение.'));
@@ -114,8 +133,9 @@ export function useGameSession() {
       }
       setIsBusy(true);
       setError(null);
+      const clientEventId = takeClientEventId(game.id);
       try {
-        const result = await rollOnServer(game.id, nextClientEventId(), value, game.diceMode);
+        const result = await rollOnServer(game.id, clientEventId, value, game.diceMode);
         const { game: nextGame, events, value: diceValue } = result;
 
         const moveEvent = events.find((e) => e.type === 'MOVE');
@@ -141,6 +161,9 @@ export function useGameSession() {
         setLastEvents(events);
         setLastRollValue(diceValue);
         setLastMove(move);
+        // Успех — этот clientEventId свою задачу выполнил, следующий
+        // (новый, самостоятельный) бросок должен получить свой собственный.
+        pendingRollIdRef.current = null;
 
         // move возвращается синхронно (а не только через lastMove-состояние),
         // чтобы вызывающий код (оркестрация модалки в GameHome) мог сразу же,
@@ -148,6 +171,25 @@ export function useGameSession() {
         // от этого зависит, сколько фаз анимации доски нужно проиграть.
         return { game: nextGame, events, value: diceValue, move };
       } catch (err) {
+        // version_conflict (см. worker/src/index.ts): партию изменили с
+        // другого устройства/вкладки между чтением и записью на сервере —
+        // САМ бросок НЕ применился и НЕ сохранился (updateGame отверг
+        // запись целиком до begin transaction), так что повторно
+        // использовать тот же clientEventId на следующей попытке правильно
+        // и безопасно (в отличие от game_finished — эту ветку и остальные
+        // сбои pendingRollIdRef тоже не трогает, ниже общий case). Локальный
+        // game при этом уже мог устареть — подтягиваем актуальную версию с
+        // сервера, чтобы следующий бросок (и просто отображение доски)
+        // отталкивались от реального состояния, а не от того, что видел
+        // клиент до конфликта.
+        if (err instanceof WorkerApiError && err.status === 409 && (err.body as { error?: string } | null)?.error === 'version_conflict') {
+          getGameFromServer(game.id)
+            .then((fresh) => setGame(fresh))
+            .catch(() => {
+              // Офлайн/сервер недоступен — оставляем как есть, следующая
+              // успешная операция (roll/restore) подтянет актуальное состояние.
+            });
+        }
         setError(errorMessage(err, 'Не удалось отправить бросок — проверь соединение.'));
         throw err;
       } finally {
@@ -172,6 +214,7 @@ export function useGameSession() {
     setLastRollValue(record.lastRollValue);
     setLastMove(record.lastMove);
     setError(null);
+    pendingRollIdRef.current = null;
   }, []);
 
   const reset = useCallback(() => {
@@ -182,9 +225,28 @@ export function useGameSession() {
     setLastRollValue(null);
     setLastMove(null);
     setError(null);
+    pendingRollIdRef.current = null;
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
+
+  // Best-effort ресинк с сервером — источником истины (см. ревью, п.6).
+  // Раньше локальный снимок (localStorage) никогда не сверялся с сервером,
+  // пока не случался следующий roll(): открыл партию на телефоне, до этого
+  // походив на планшете — до первого броска на телефоне доска показывала
+  // устаревшее положение фишки. Вызывается после восстановления сессии на
+  // старте (App.tsx) и при "Продолжить" из "Моих партий" (MyGames.tsx).
+  // Намеренно не бросает исключений и не трогает isBusy/error — это тихое
+  // фоновое обновление, а не действие пользователя; офлайн просто оставляет
+  // локальный снимок как есть.
+  const syncFromServer = useCallback(async (gameId: string) => {
+    try {
+      const fresh = await getGameFromServer(gameId);
+      setGame((prev) => (prev && prev.id === gameId ? fresh : prev));
+    } catch {
+      // Офлайн или сервер недоступен — молча остаёмся на локальном снимке.
+    }
+  }, []);
 
   const cellById = useCallback((id: number) => content.cells.find((c) => c.id === id), [content]);
 
@@ -206,6 +268,7 @@ export function useGameSession() {
     roll,
     restore,
     reset,
+    syncFromServer,
     cellById,
   };
 }

@@ -8,6 +8,8 @@ import {
   deleteGame,
   getActiveGameId,
   setActiveGameId,
+  getHiddenGameIds,
+  hideGameId,
 } from '../storage/localStorage';
 
 /**
@@ -48,4 +50,15 @@ export function getActivePersistedGameId(): string | null {
 
 export function setActivePersistedGameId(id: string | null): void {
   setActiveGameId(id);
+}
+
+/** См. storage/localStorage.ts:hideGameId — "удалить" партию на сервере
+ * сейчас невозможно (нет DELETE-эндпоинта), поэтому это локальное
+ * сокрытие для этого устройства. */
+export function getHiddenPersistedGameIds(): string[] {
+  return getHiddenGameIds();
+}
+
+export function hidePersistedGame(id: string): void {
+  hideGameId(id);
 }

@@ -83,4 +83,34 @@ describe('workerClient', () => {
 
     await expect(listGamesOnServer()).rejects.toThrow(WorkerApiError);
   });
+
+  it('listGamesOnServer без опций не добавляет query-параметры', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ games: [], nextCursor: null }));
+
+    await listGamesOnServer();
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(String(url)).toBe('https://leela-worker.nikita-karpof.workers.dev/api/v1/games');
+  });
+
+  it('listGamesOnServer пробрасывает cursor и limit как query-параметры', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ games: [], nextCursor: null }));
+
+    await listGamesOnServer({ cursor: 'abc123', limit: 5 });
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(String(url)).toContain('cursor=abc123');
+    expect(String(url)).toContain('limit=5');
+  });
+
+  it('listGamesOnServer возвращает games и nextCursor из ответа сервера', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ games: [{ id: 'g1' }], nextCursor: 'next-page-token' })
+    );
+
+    const page = await listGamesOnServer();
+
+    expect(page.games).toHaveLength(1);
+    expect(page.nextCursor).toBe('next-page-token');
+  });
 });

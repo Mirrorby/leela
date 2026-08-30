@@ -69,9 +69,25 @@ export async function createGameOnServer(request: string, diceMode: DiceMode): P
   return result.game;
 }
 
-export async function listGamesOnServer(): Promise<GameState[]> {
-  const result = await apiFetch<{ games: GameState[] }>('/api/v1/games');
-  return result.games;
+export interface GamesPage {
+  games: GameState[];
+  nextCursor: string | null;
+}
+
+/**
+ * Раньше вызывалась без параметров и вообще не использовалась экраном "Мои
+ * партии" (см. MyGames.tsx) — весь список читался из localStorage, из-за
+ * чего партии "терялись" из UI при очистке локального хранилища, хотя
+ * оставались целы на сервере. Теперь это основной источник списка партий;
+ * cursor/limit пробрасывают серверную keyset-пагинацию (worker/src/games/repository.ts)
+ * дальше в UI ("Загрузить ещё").
+ */
+export async function listGamesOnServer(options: { cursor?: string | null; limit?: number } = {}): Promise<GamesPage> {
+  const params = new URLSearchParams();
+  if (options.cursor) params.set('cursor', options.cursor);
+  if (options.limit) params.set('limit', String(options.limit));
+  const query = params.toString();
+  return apiFetch<GamesPage>(`/api/v1/games${query ? `?${query}` : ''}`);
 }
 
 export async function getGameFromServer(gameId: string): Promise<GameState> {

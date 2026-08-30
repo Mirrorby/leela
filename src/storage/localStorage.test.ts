@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { deleteGame, getActiveGameId, listGames, loadGame, saveGame, setActiveGameId } from './localStorage';
+import {
+  deleteGame,
+  getActiveGameId,
+  listGames,
+  loadGame,
+  saveGame,
+  setActiveGameId,
+  getHiddenGameIds,
+  hideGameId,
+} from './localStorage';
 
 interface TestRecord {
   id: string;
@@ -90,6 +99,24 @@ describe('localStorage layer — нормальный путь', () => {
     setActiveGameId(null);
     expect(getActiveGameId()).toBeNull();
   });
+
+  it('hideGameId/getHiddenGameIds — список скрытых id независим от основного индекса партий', () => {
+    expect(getHiddenGameIds()).toEqual([]);
+    hideGameId('a');
+    hideGameId('b');
+    expect(getHiddenGameIds().sort()).toEqual(['a', 'b']);
+    // Партия при этом остаётся в обычном индексе — hideGameId не трогает
+    // saveGame/listGames, это отдельный список (см. MyGames.tsx: сервер не
+    // умеет удалять партии, поэтому "удалить" — локальное сокрытие).
+    saveGame<TestRecord>({ id: 'a', value: 1 });
+    expect(listGames<TestRecord>().map((r) => r.id)).toEqual(['a']);
+  });
+
+  it('hideGameId не дублирует id при повторном вызове', () => {
+    hideGameId('a');
+    hideGameId('a');
+    expect(getHiddenGameIds()).toEqual(['a']);
+  });
 });
 
 describe('localStorage layer — устойчивость к повреждённым данным', () => {
@@ -132,6 +159,8 @@ describe('localStorage layer — недоступность/переполнен
     expect(getActiveGameId()).toBeNull();
     expect(() => setActiveGameId('a')).not.toThrow();
     expect(() => deleteGame('a')).not.toThrow();
+    expect(getHiddenGameIds()).toEqual([]);
+    expect(() => hideGameId('a')).not.toThrow();
   });
 
   it('работает мягко, когда localStorage бросает исключение на каждый вызов (приватный режим Safari)', () => {

@@ -138,3 +138,39 @@ export function setActiveGameId(id: string | null): void {
     // ignore
   }
 }
+
+const HIDDEN_IDS_KEY = `${STORAGE_PREFIX}hiddenGameIds`;
+
+/**
+ * "Мои партии" теперь читает список в первую очередь с сервера (см.
+ * MyGames.tsx, п.1 ревью) — сервер не поддерживает удаление партий
+ * (`DELETE /api/v1/games/:id` не существует, партии остаются в D1
+ * навсегда). "Удалить" в UI поэтому означает "скрыть на этом устройстве",
+ * а не настоящее удаление — список скрытых id хранится отдельно от
+ * основного индекса локального кэша, чтобы работать даже для партий, у
+ * которых locally-кэшированной записи никогда не было (открыты только на
+ * другом устройстве).
+ */
+export function getHiddenGameIds(): string[] {
+  if (!isStorageAvailable()) return [];
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_IDS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function hideGameId(id: string): void {
+  if (!isStorageAvailable()) return;
+  const current = getHiddenGameIds();
+  if (current.includes(id)) return;
+  try {
+    window.localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify([...current, id]));
+  } catch {
+    // ignore — квота переполнена и на этот маленький список, не критично.
+  }
+}

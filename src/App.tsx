@@ -6,7 +6,7 @@ import {
   persistGame,
   setActivePersistedGameId,
 } from './state/persistence';
-import { resolveGameScreen } from './state/resolveGameScreen';
+import { resolveGameScreen, normalizeScreenName } from './state/resolveGameScreen';
 import type { NavigationActions, ScreenEntry, ScreenName } from './navigation/types';
 import { screens } from './screens';
 import { captureInitData, initTelegramApp } from './telegram/telegramAdapter';
@@ -15,32 +15,10 @@ import { useTelegramViewport } from './telegram/useTelegramViewport';
 import { useTelegramBackButton } from './telegram/useTelegramBackButton';
 import './App.css';
 
-// Редизайн (этап 7): шесть экранов флоу броска (DiceRoll, TurnResult,
-// CellCard, TransitionEvent, ExtraRollPrompt, TripleSixReset) убраны из
-// ScreenName и больше никогда не пушатся в стек — но старая сохранённая
-// партия в localStorage могла быть записана ДО редизайна с одним из этих
-// имён как "текущий экран". TS-тип на рантайм-значение из JSON.parse не
-// влияет, поэтому normalizeScreenName подстраховывает восстановление:
-// любое незнакомое имя экрана превращается в GameHome — экран партии,
-// который теперь и так вмещает в себя весь этот флоу.
-// Восстановление старых сохранённых партий: незнакомое имя экрана
-// превращается в GameHome — экран партии, который теперь и так вмещает в
-// себя весь этот флоу.
+// Восстановление старых сохранённых партий и нормализация имени экрана —
+// см. state/resolveGameScreen.ts:normalizeScreenName (используется здесь и
+// в MyGames.tsx при "Продолжить" — общая точка, не дублируем логику).
 //
-// FinishScreen (п.8 правок): раньше отдельный промежуточный шаг "Партия
-// завершена" с кнопкой на итог партии. Убран из стека совсем — теперь при
-// завершении партии сразу показываем сам итог (см. GameHome.tsx). Но
-// сохранённая на диске партия старого пользователя может ссылаться именно
-// на 'FinishScreen' как на текущий экран (запись сделана до этой правки) —
-// такую партию открываем прямо на Summary, а не на GameHome, чтобы не
-// откатывать человека на доску, если он уже дошёл до конца пути.
-const KNOWN_SCREENS = new Set<ScreenName>(['Splash', 'MyGames', 'Intro', 'RequestInput', 'DiceModeSelect', 'GameHome', 'History', 'Summary']);
-
-function normalizeScreenName(name: string): ScreenName {
-  if (name === 'FinishScreen') return 'Summary';
-  return KNOWN_SCREENS.has(name as ScreenName) ? (name as ScreenName) : 'GameHome';
-}
-
 // Этап 3: минимальный UI-каркас, собственный стек экранов (react-router
 // сознательно не используется). Этап 4: партия переживает закрытие вкладки —
 // на каждое изменение сессии/экрана пишем снимок в localStorage, при
@@ -74,6 +52,11 @@ function App() {
         // state/resolveGameScreen.ts): если экран сохранён предыгровым, а у
         // партии уже есть реальный прогресс, открываем сразу GameHome.
         setStack([{ name: resolveGameScreen(normalizeScreenName(record.screen), record.game) }]);
+        // Фоновый ресинк с сервером (см. useGameSession.syncFromServer,
+        // ревью п.6) — локальный снимок мог устареть, если партия успела
+        // измениться на другом устройстве/вкладке между закрытием этой
+        // сессии и сейчас. Не блокирует рендер и не мешает офлайн-режиму.
+        void session.syncFromServer(record.id);
       } else {
         // activeGameId ссылается на запись, которой больше нет (удалена
         // вручную или JSON повреждён) — просто забываем про неё.
