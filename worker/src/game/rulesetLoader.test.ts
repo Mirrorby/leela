@@ -1,4 +1,3 @@
-
 import { describe, it, expect } from 'vitest';
 import { getRuleset, validateRuleset } from './rulesetLoader';
 import type { Ruleset } from '../types/game';
