@@ -386,7 +386,14 @@
   gap: 12px;
 }
 
-.game-home-topbar {
+.game-home-topbar,
+.screen-header-row {
+  /* Найденный баг (ревью по скриншоту): .screen-header-row использовался в
+     History.tsx (заголовок "История ходов" + кнопка "☰" в одну строку), но
+     само правило для класса нигде не было определено — div рендерился
+     обычным блоком, h1 и button просто складывались друг под другом
+     вертикально. Тот же flex-паттерн, что уже работал для
+     .game-home-topbar — объединяю селекторы, а не дублирую правило. */
   display: flex;
   align-items: center;
   justify-content: space-between;
