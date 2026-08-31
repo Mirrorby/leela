@@ -693,3 +693,71 @@ describe('/telegram/webhook routing', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('монетизация (батч 1) — /api/v1/products и /api/v1/entitlements', () => {
+  let env: Env;
+
+  beforeEach(() => {
+    env = makeEnv();
+    vi.restoreAllMocks();
+  });
+
+  it('/api/v1/products без авторизации — 401', async () => {
+    const res = await worker.fetch(req('/api/v1/products'), env, fakeCtx);
+    expect(res.status).toBe(401);
+  });
+
+  it('/api/v1/products возвращает все 5 продуктов каталога', async () => {
+    const auth = await authHeaderFor(9001);
+    const res = await worker.fetch(req('/api/v1/products', { headers: { Authorization: auth } }), env, fakeCtx);
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.products).toHaveLength(5);
+    expect(body.products.map((p: { id: string }) => p.id).sort()).toEqual(
+      ['ai_review_1', 'game_1', 'game_5', 'game_ai_combo', 'subscription_unlimited'].sort()
+    );
+  });
+
+  it('/api/v1/products с POST — 405', async () => {
+    const auth = await authHeaderFor(9001);
+    const res = await worker.fetch(req('/api/v1/products', { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    expect(res.status).toBe(405);
+  });
+
+  it('/api/v1/entitlements без авторизации — 401', async () => {
+    const res = await worker.fetch(req('/api/v1/entitlements'), env, fakeCtx);
+    expect(res.status).toBe(401);
+  });
+
+  it('/api/v1/entitlements для нового пользователя — дефолты §2 ТЗ, можно и партию, и разбор', async () => {
+    const auth = await authHeaderFor(9002);
+    const res = await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx);
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body).toEqual({
+      freeGamesRemaining: 2,
+      paidGames: 0,
+      freeAiReviewsRemaining: 1,
+      paidAiReviews: 0,
+      subscription: null,
+      canStartGame: true,
+      canStartAiReview: true,
+    });
+  });
+
+  it('/api/v1/entitlements — повторный запрос не сбрасывает и не меняет баланс (чистое чтение)', async () => {
+    const auth = await authHeaderFor(9003);
+    const first = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+    const second = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(second).toEqual(first);
+  });
+
+  it('/api/v1/entitlements изолирован по пользователю (разные telegram_id не делят баланс)', async () => {
+    const authA = await authHeaderFor(9004);
+    const authB = await authHeaderFor(9005);
+    const a = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: authA } }), env, fakeCtx));
+    const b = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: authB } }), env, fakeCtx));
+    expect(a.freeGamesRemaining).toBe(2);
+    expect(b.freeGamesRemaining).toBe(2);
+  });
+});

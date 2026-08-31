@@ -4,6 +4,8 @@ import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
 import { insertGame, updateGame, getGameById, listGamesByUser, InvalidCursorError } from './games/repository';
+import { listProducts } from './payments/catalog';
+import { getEntitlements } from './payments/repository';
 import type { DiceMode } from './types/game';
 
 export interface Env {
@@ -114,6 +116,18 @@ async function handleGetGame(env: Env, auth: ValidatedInitData, gameId: string):
     return json({ error: 'not_found' }, { status: 404 });
   }
   return json({ game: found.game });
+}
+
+// Монетизация, батч 1 (см. worker/migrations/0006..0010 и payments/):
+// только каталог и чтение текущего баланса/подписки. Списание при создании
+// партии/ИИ-разбора, вебхук покупок — следующие батчи.
+async function handleListProducts(): Promise<Response> {
+  return json({ products: listProducts() });
+}
+
+async function handleGetEntitlements(env: Env, auth: ValidatedInitData): Promise<Response> {
+  const entitlements = await getEntitlements(env.DB, auth.telegramId);
+  return json(entitlements);
 }
 
 async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
@@ -258,6 +272,25 @@ export default {
       }
 
       return json({ error: 'not_found' }, { status: 404 });
+    }
+
+    // Монетизация (см. payments/) — авторизация тем же initData, что и
+    // остальной API, для единообразия и потому что каталог/баланс всё равно
+    // персонализированы вторым эндпоинтом (entitlements зависит от
+    // telegram_id), так что делать products публичным ради одного запроса
+    // без initData не даёт выгоды, а вносит асимметрию в код авторизации.
+    if (url.pathname === '/api/v1/products') {
+      const auth = await requireAuth(request, env);
+      if (!isValidatedInitData(auth)) return auth;
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
+      return handleListProducts();
+    }
+
+    if (url.pathname === '/api/v1/entitlements') {
+      const auth = await requireAuth(request, env);
+      if (!isValidatedInitData(auth)) return auth;
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
+      return handleGetEntitlements(env, auth);
     }
 
     if (url.pathname === '/telegram/webhook') {

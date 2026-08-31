@@ -8,6 +8,15 @@
  */
 export function createFakeD1(): D1Database {
   const rows: Array<Record<string, unknown>> = [];
+  // Монетизация (батч 1) — отдельные in-memory "таблицы" для новых сущностей.
+  // balanceRows.telegram_id уникален (эмулирует PRIMARY KEY + ON CONFLICT DO
+  // NOTHING из payments/repository.ts:getOrCreateUserBalance).
+  const balanceRows: Array<Record<string, unknown>> = [];
+  // subscriptionRows заполняются в тестах напрямую через INSERT (реального
+  // кода вставки подписок в батче 1 ещё нет — появится в батче 3, вместе с
+  // обработкой successful_payment); формат строки уже зафиксирован под
+  // payments/repository.ts:SubscriptionRow.
+  const subscriptionRows: Array<Record<string, unknown>> = [];
 
   function prepare(query: string) {
     let bound: unknown[] = [];
@@ -26,6 +35,21 @@ export function createFakeD1(): D1Database {
           const [id, telegramId] = bound as [string, string];
           const row = rows.find((r) => r.id === id && r.telegram_id === telegramId);
           return (row as T) ?? null;
+        }
+        if (normalized.startsWith('SELECT * FROM user_balances WHERE telegram_id = ?')) {
+          const [telegramId] = bound as [string];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          return (row as T) ?? null;
+        }
+        if (normalized.startsWith('SELECT * FROM subscriptions WHERE telegram_id = ?')) {
+          // ORDER BY period_end DESC LIMIT 1 — эмулируем сортировку явно, а
+          // не просто берём первую вставленную: тесты специально проверяют
+          // порядок (см. payments/repository.test.ts).
+          const [telegramId] = bound as [string];
+          const matches = subscriptionRows.filter((r) => r.telegram_id === telegramId);
+          if (matches.length === 0) return null;
+          const latest = matches.slice().sort((a, b) => (b.period_end as number) - (a.period_end as number))[0];
+          return (latest as T) ?? null;
         }
         return null;
       },
@@ -66,6 +90,69 @@ export function createFakeD1(): D1Database {
         return { results: [], success: true, meta: {} as never };
       },
       async run(): Promise<D1Result> {
+        if (normalized.startsWith('UPDATE user_balances SET')) {
+          // Обобщённый тестовый апдейт: SET-часть в реальном запросе появится
+          // только в батче 2 (списание баланса) — здесь эмулируем ЛЮБОЕ
+          // "SET колонка = значение WHERE telegram_id = ?" без привязки к
+          // конкретному набору колонок, чтобы тесты батча 1 могли напрямую
+          // симулировать "баланс уже изменён" без ожидания кода списания.
+          const setClauseMatch = normalized.match(/^UPDATE user_balances SET (.+) WHERE telegram_id = \?$/);
+          if (!setClauseMatch) {
+            throw new Error(`fakeD1: неподдерживаемый UPDATE user_balances: ${normalized}`);
+          }
+          const columns = setClauseMatch[1].split(',').map((part) => part.split('=')[0].trim());
+          const telegramId = bound[bound.length - 1] as string;
+          const values = bound.slice(0, -1);
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row) {
+            columns.forEach((col, i) => {
+              row[col] = values[i];
+            });
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('INSERT INTO user_balances')) {
+          // ON CONFLICT(telegram_id) DO NOTHING — эмулируем: если строка с
+          // таким telegram_id уже есть, вообще ничего не делаем (в т.ч. не
+          // трогаем free_*_remaining, это ровно то поведение, которое
+          // защищает от сброса бесплатных партий при повторном вызове).
+          const [telegram_id, free_games_remaining, free_ai_reviews_remaining, created_at, updated_at] = bound as [
+            string,
+            number,
+            number,
+            number,
+            number,
+          ];
+          const exists = balanceRows.some((r) => r.telegram_id === telegram_id);
+          if (!exists) {
+            balanceRows.push({
+              telegram_id,
+              free_games_remaining,
+              free_ai_reviews_remaining,
+              paid_games: 0,
+              paid_ai_reviews: 0,
+              version: 1,
+              created_at,
+              updated_at,
+            });
+          }
+          return { results: [], success: true, meta: {} as never };
+        }
+        if (normalized.startsWith('INSERT INTO subscriptions')) {
+          // Тестовый сид (см. комментарий у subscriptionRows выше) — колонки
+          // ровно в порядке payments/repository.ts:SubscriptionRow.
+          const [id, telegram_id, period_end, auto_renew, created_at, updated_at] = bound as [
+            string,
+            string,
+            number,
+            number,
+            number,
+            number,
+          ];
+          subscriptionRows.push({ id, telegram_id, period_end, auto_renew, created_at, updated_at });
+          return { results: [], success: true, meta: {} as never };
+        }
         if (normalized.startsWith('INSERT INTO games')) {
           const [
             id,
