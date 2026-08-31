@@ -77,3 +77,84 @@ export async function getEntitlements(db: D1Database, telegramId: string): Promi
   const [balance, subscription] = await Promise.all([getOrCreateUserBalance(db, telegramId), getLatestSubscription(db, telegramId)]);
   return computeEntitlements(balance, subscription, Date.now());
 }
+
+export type GameChargeSource = 'subscription' | 'free' | 'paid';
+
+/** Баланс исчерпан (нет активной подписки, нет бесплатных и купленных
+ * партий) — вызывающий код (index.ts) должен ответить 402 с каталогом. */
+export class InsufficientBalanceError extends Error {
+  constructor() {
+    super('insufficient balance for a new game');
+    this.name = 'InsufficientBalanceError';
+  }
+}
+
+/** Баланс изменился между чтением и списанием (гонка — например, два
+ * параллельных "Начать партию") — вызывающий код должен ответить 409,
+ * клиент повторяет запрос (с тем же clientRequestId — списания ещё не
+ * произошло, повтор безопасен). Тот же принцип, что version_conflict у
+ * games (см. worker/src/index.ts:handleRoll). */
+export class BalanceVersionConflictError extends Error {
+  constructor() {
+    super('user_balances changed concurrently');
+    this.name = 'BalanceVersionConflictError';
+  }
+}
+
+/**
+ * Атомарное списание за одну партию, приоритет по §3.3/§9 ТЗ: подписка →
+ * бесплатные партии → купленные. Подписка не расходует счётчик — просто
+ * подтверждает право начать партию, пока period_end в будущем.
+ *
+ * Каждое условное UPDATE проверяет version И достаточность остатка ОДНИМ
+ * WHERE (`version = ? AND free_games_remaining > 0`) — если строка успела
+ * измениться параллельным запросом между SELECT (в getOrCreateUserBalance
+ * выше по стеку) и этим UPDATE, `.meta.changes` будет 0 независимо от
+ * причины (сама гонка или кто-то другой уже потратил последнюю партию), и
+ * мы всегда просим клиента повторить запрос заново — он перечитает
+ * актуальный баланс и корректно попадёт либо в успешное списание, либо в
+ * честный 402, а не получит партию поверх недостоверного счёта.
+ *
+ * Известный остаточный риск (осознанно принят, не D1-транзакция на два
+ * оператора): если этот UPDATE прошёл, а последующий insertGame (в
+ * index.ts) всё же упадёт по непредвиденной причине, баланс окажется
+ * списан без созданной партии. Для масштаба этого проекта — редкий и
+ * дешёвый в ручном разборе случай (не стали городить компенсирующую
+ * транзакцию/сагу ради него); если станет реальной проблемой — можно
+ * добавить сверку по analytics_events позже.
+ */
+export async function chargeForGame(db: D1Database, telegramId: string): Promise<{ source: GameChargeSource }> {
+  const [balance, subscription] = await Promise.all([getOrCreateUserBalance(db, telegramId), getLatestSubscription(db, telegramId)]);
+  const now = Date.now();
+  const subscriptionActive = subscription != null && subscription.period_end > now;
+
+  if (subscriptionActive) {
+    return { source: 'subscription' };
+  }
+
+  if (balance.free_games_remaining > 0) {
+    const result = await db
+      .prepare(
+        `UPDATE user_balances SET free_games_remaining = free_games_remaining - 1, version = version + 1, updated_at = ?
+         WHERE telegram_id = ? AND version = ? AND free_games_remaining > 0`
+      )
+      .bind(now, telegramId, balance.version)
+      .run();
+    if ((result.meta?.changes ?? 0) === 0) throw new BalanceVersionConflictError();
+    return { source: 'free' };
+  }
+
+  if (balance.paid_games > 0) {
+    const result = await db
+      .prepare(
+        `UPDATE user_balances SET paid_games = paid_games - 1, version = version + 1, updated_at = ?
+         WHERE telegram_id = ? AND version = ? AND paid_games > 0`
+      )
+      .bind(now, telegramId, balance.version)
+      .run();
+    if ((result.meta?.changes ?? 0) === 0) throw new BalanceVersionConflictError();
+    return { source: 'paid' };
+  }
+
+  throw new InsufficientBalanceError();
+}

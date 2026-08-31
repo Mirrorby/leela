@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import worker, { type Env } from './index';
 import { createFakeD1 } from './testUtils/fakeD1';
 import { buildSignedInitData, freshAuthDate, TEST_BOT_TOKEN } from './testUtils/signInitData';
+import { getOrCreateUserBalance } from './payments/repository';
 
 function makeEnv(): Env {
   return { DB: createFakeD1(), BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'test-webhook-secret' };
@@ -13,6 +14,18 @@ async function authHeaderFor(telegramId: number): Promise<string> {
     user: JSON.stringify({ id: telegramId, first_name: 'Test' }),
   });
   return `tma ${initData}`;
+}
+
+/** Тестовый хелпер (батч 2): выдать пользователю большой запас купленных
+ * партий, чтобы тесты, не относящиеся к монетизации (пагинация и т.п.), не
+ * упирались в лимит бесплатных партий из §2 ТЗ. Не эмулирует реальную
+ * покупку (нет записи в transactions) — только баланс, этого достаточно
+ * для проверки остальной логики создания/чтения партий изолированно от
+ * платежей. */
+async function grantUnlimitedGamesForTest(env: Env, telegramId: number): Promise<void> {
+  const id = String(telegramId);
+  await getOrCreateUserBalance(env.DB, id);
+  await env.DB.prepare('UPDATE user_balances SET paid_games = ? WHERE telegram_id = ?').bind(1000, id).run();
 }
 
 function req(path: string, init: RequestInit = {}): Request {
@@ -568,6 +581,11 @@ describe('worker routes', () => {
 
   it('пагинация: limit ограничивает размер страницы, nextCursor ведёт на следующую, на последней странице nextCursor = null', async () => {
     const auth = await authHeaderFor(1400);
+    // Тест про пагинацию, не про лимит бесплатных партий (§2 ТЗ по
+    // монетизации, батч 2) — создаём 5 партий подряд для одного
+    // пользователя, поэтому сначала выдаём тестовый запас, чтобы 402 на
+    // 3-й партии не мешал проверять именно keyset-пагинацию.
+    await grantUnlimitedGamesForTest(env, 1400);
     const requests = ['p1', 'p2', 'p3', 'p4', 'p5'];
     for (const r of requests) {
       await worker.fetch(
@@ -759,5 +777,156 @@ describe('монетизация (батч 1) — /api/v1/products и /api/v1/en
     const b = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: authB } }), env, fakeCtx));
     expect(a.freeGamesRemaining).toBe(2);
     expect(b.freeGamesRemaining).toBe(2);
+  });
+});
+
+describe('монетизация (батч 2) — списание партий, paywall, идемпотентность создания', () => {
+  let env: Env;
+
+  beforeEach(() => {
+    env = makeEnv();
+    vi.restoreAllMocks();
+  });
+
+  async function createGame(auth: string, extra: Record<string, unknown> = {}) {
+    const res = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical', ...extra }),
+      }),
+      env,
+      fakeCtx
+    );
+    return { res, body: await readJson(res) };
+  }
+
+  async function entitlementsFor(auth: string) {
+    return readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+  }
+
+  it('первые 2 партии — бесплатно, списывается freeGamesRemaining (§2 ТЗ)', async () => {
+    const auth = await authHeaderFor(20001);
+    const { res: res1 } = await createGame(auth);
+    expect(res1.status).toBe(201);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(1);
+
+    const { res: res2 } = await createGame(auth);
+    expect(res2.status).toBe(201);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(0);
+  });
+
+  it('3-я партия без баланса — 402 games_limit_reached с каталогом продуктов, партия НЕ создаётся', async () => {
+    const auth = await authHeaderFor(20002);
+    await createGame(auth);
+    await createGame(auth);
+    const { res, body } = await createGame(auth);
+    expect(res.status).toBe(402);
+    expect(body.error).toBe('games_limit_reached');
+    expect(body.products.length).toBeGreaterThan(0);
+    expect(body.products.every((p: { grant: { games: number }; isSubscription: boolean }) => p.grant.games > 0 || p.isSubscription)).toBe(true);
+
+    const list = await readJson(await worker.fetch(req('/api/v1/games', { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(list.games).toHaveLength(2);
+  });
+
+  it('повторный POST с тем же clientRequestId возвращает ту же партию и НЕ списывает баланс дважды', async () => {
+    const auth = await authHeaderFor(20003);
+    const { res: res1, body: body1 } = await createGame(auth, { clientRequestId: 'same-id' });
+    expect(res1.status).toBe(201);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(1);
+
+    const { res: res2, body: body2 } = await createGame(auth, { clientRequestId: 'same-id' });
+    expect(res2.status).toBe(200);
+    expect(body2.game.id).toBe(body1.game.id);
+    // Баланс не должен был списаться второй раз за тот же clientRequestId.
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(1);
+  });
+
+  it('разные clientRequestId — разные партии, баланс списывается за каждую', async () => {
+    const auth = await authHeaderFor(20004);
+    const { body: body1 } = await createGame(auth, { clientRequestId: 'id-1' });
+    const { body: body2 } = await createGame(auth, { clientRequestId: 'id-2' });
+    expect(body1.game.id).not.toBe(body2.game.id);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(0);
+  });
+
+  it('после исчерпания free — списывается paidGames (§9 ТЗ, приоритет free -> paid)', async () => {
+    const auth = await authHeaderFor(20005);
+    await createGame(auth);
+    await createGame(auth);
+    await env.DB.prepare('UPDATE user_balances SET paid_games = ? WHERE telegram_id = ?').bind(3, String(20005)).run();
+
+    const { res } = await createGame(auth);
+    expect(res.status).toBe(201);
+    const entitlements = await entitlementsFor(auth);
+    expect(entitlements.freeGamesRemaining).toBe(0);
+    expect(entitlements.paidGames).toBe(2);
+  });
+
+  it('активная подписка — партия создаётся без списания free/paid счётчиков вообще (§3.3, §18 ТЗ)', async () => {
+    const auth = await authHeaderFor(20006);
+    const telegramId = String(20006);
+    await getOrCreateUserBalance(env.DB, telegramId);
+    await env.DB
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', telegramId, Date.now() + 1000 * 60 * 60 * 24 * 30, 1, Date.now(), Date.now())
+      .run();
+
+    const { res } = await createGame(auth);
+    expect(res.status).toBe(201);
+    const entitlements = await entitlementsFor(auth);
+    expect(entitlements.freeGamesRemaining).toBe(2); // не тронуто
+    expect(entitlements.paidGames).toBe(0); // не тронуто
+    expect(entitlements.subscription?.active).toBe(true);
+  });
+
+  it('приоритет §3.3: активная подписка используется ПЕРЕД бесплатными партиями (free остаётся нетронутым)', async () => {
+    const auth = await authHeaderFor(20007);
+    const telegramId = String(20007);
+    await getOrCreateUserBalance(env.DB, telegramId); // free_games_remaining = 2
+    await env.DB
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', telegramId, Date.now() + 1000 * 60 * 60 * 24 * 30, 1, Date.now(), Date.now())
+      .run();
+
+    await createGame(auth);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(2);
+  });
+
+  it('запрос без clientRequestId (обратная совместимость со старым фронтом) — партия создаётся, сервер сам генерирует id', async () => {
+    const auth = await authHeaderFor(20008);
+    const { res, body } = await createGame(auth);
+    expect(res.status).toBe(201);
+    expect(typeof body.game.id).toBe('string');
+  });
+
+  it('конфликт версии баланса (гонка) — 409, а не тихая порча счёта', async () => {
+    const auth = await authHeaderFor(20009);
+    const telegramId = String(20009);
+    await getOrCreateUserBalance(env.DB, telegramId);
+    // Меняем версию баланса "из-под ног" между чтением и записью —
+    // эмулирует параллельный запрос, который уже успел списать раньше нас.
+    const originalPrepare = env.DB.prepare.bind(env.DB);
+    let intercepted = false;
+    vi.spyOn(env.DB, 'prepare').mockImplementation((query: string) => {
+      const stmt = originalPrepare(query);
+      if (!intercepted && query.trim().startsWith('UPDATE user_balances SET free_games_remaining = free_games_remaining - 1')) {
+        intercepted = true;
+        return {
+          ...stmt,
+          bind: (...args: unknown[]) => {
+            // Гонка: конкурентный запрос "успевает" поднять version раньше нас.
+            void env.DB.prepare('UPDATE user_balances SET version = ? WHERE telegram_id = ?').bind(999, telegramId).run();
+            return stmt.bind(...args);
+          },
+        } as D1PreparedStatement;
+      }
+      return stmt;
+    });
+
+    const { res, body } = await createGame(auth);
+    expect(res.status).toBe(409);
+    expect(body.error).toBe('version_conflict');
   });
 });

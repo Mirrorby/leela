@@ -3,9 +3,9 @@ import { isValidDiceValue, rollVirtualDice } from './game/diceEngine';
 import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
-import { insertGame, updateGame, getGameById, listGamesByUser, InvalidCursorError } from './games/repository';
+import { insertGame, updateGame, getGameById, getGameByClientRequestId, listGamesByUser, InvalidCursorError } from './games/repository';
 import { listProducts } from './payments/catalog';
-import { getEntitlements } from './payments/repository';
+import { getEntitlements, chargeForGame, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
 import type { DiceMode } from './types/game';
 
 export interface Env {
@@ -67,7 +67,7 @@ function isValidatedInitData(value: ValidatedInitData | Response): value is Vali
 }
 
 async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitData): Promise<Response> {
-  const body = await readJson<{ request?: unknown; diceMode?: unknown }>(request);
+  const body = await readJson<{ request?: unknown; diceMode?: unknown; clientRequestId?: unknown }>(request);
   if (!body || typeof body.request !== 'string' || !body.request.trim()) {
     return json({ error: 'invalid_body', detail: 'request (string, non-empty) is required' }, { status: 400 });
   }
@@ -75,9 +75,53 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
     return json({ error: 'invalid_body', detail: 'diceMode must be "physical" or "virtual"' }, { status: 400 });
   }
 
+  // clientRequestId опционален для совместимости со старым фронтом, который
+  // его ещё не шлёт (появится в батче 6) — но БЕЗ него ретрай после
+  // потерянного ответа спишет партию из баланса повторно (тот же класс
+  // бага, что уже чинили для бросков — см. findRollByClientEventId ниже).
+  // Если клиент не передал id — генерируем сами; это не защищает ОТ
+  // повторного списания при ретрае (сервер не может отличить "клиент
+  // повторяет то же действие" от "клиент начинает новую партию" без ключа
+  // от самого клиента), но и не ломает запросы от ещё не обновившегося
+  // фронта прямо сейчас.
+  const clientRequestId = typeof body.clientRequestId === 'string' && body.clientRequestId ? body.clientRequestId : crypto.randomUUID();
+
+  // Идемпотентность — ДО списания баланса и ДО создания партии, тем же
+  // приёмом, что дедупликация бросков (handleRoll ниже): если эту партию
+  // уже создали по этому ключу, отдаём её как есть, не списывая второй раз.
+  const existing = await getGameByClientRequestId(env.DB, auth.telegramId, clientRequestId);
+  if (existing) {
+    return json({ game: existing });
+  }
+
   const ruleset = getRuleset(DEFAULT_RULESET_ID);
   if (!ruleset) {
     return json({ error: 'ruleset_not_found', detail: DEFAULT_RULESET_ID }, { status: 500 });
+  }
+
+  // Списание — ПЕРЕД созданием партии (после проверки ruleset'а — если его
+  // почему-то нет, партия и так не создастся, незачем сначала списывать
+  // баланс за партию, которая не будет создана).
+  try {
+    await chargeForGame(env.DB, auth.telegramId);
+  } catch (err) {
+    if (err instanceof InsufficientBalanceError) {
+      return json(
+        {
+          error: 'games_limit_reached',
+          detail: 'Бесплатные и купленные партии закончились.',
+          products: listProducts().filter((p) => p.grant.games > 0 || p.isSubscription),
+        },
+        { status: 402 }
+      );
+    }
+    if (err instanceof BalanceVersionConflictError) {
+      return json(
+        { error: 'version_conflict', detail: 'Баланс изменился параллельно (другое устройство/вкладка) — попробуйте ещё раз.' },
+        { status: 409 }
+      );
+    }
+    throw err;
   }
 
   const game = createNewGame({
@@ -87,7 +131,7 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
     diceMode: body.diceMode as DiceMode,
   });
 
-  await insertGame(env.DB, game, auth.telegramId);
+  await insertGame(env.DB, game, auth.telegramId, clientRequestId);
   return json({ game }, { status: 201 });
 }
 

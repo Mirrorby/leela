@@ -81,15 +81,15 @@ function gameStateToRowParams(game: GameState, telegramId: string): GameRowParam
   };
 }
 
-export async function insertGame(db: D1Database, game: GameState, telegramId: string): Promise<void> {
+export async function insertGame(db: D1Database, game: GameState, telegramId: string, clientRequestId: string | null = null): Promise<void> {
   const p = gameStateToRowParams(game, telegramId);
   await db
     .prepare(
       `INSERT INTO games (
         id, telegram_id, status, ruleset_id, ruleset_version, dice_mode,
         current_cell, is_born, rolls_json, turns_json, created_at, updated_at,
-        consecutive_sixes, position_before_six_series, request, version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+        consecutive_sixes, position_before_six_series, request, version, client_request_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
     )
     .bind(
       p.id,
@@ -106,9 +106,23 @@ export async function insertGame(db: D1Database, game: GameState, telegramId: st
       p.updated_at,
       p.consecutive_sixes,
       p.position_before_six_series,
-      p.request
+      p.request,
+      clientRequestId
     )
     .run();
+}
+
+/** Партия по идемпотентность-ключу клиента (см. 0011_add_client_request_id_to_games.sql
+ * и index.ts:handleCreateGame) — используется ДО списания баланса, чтобы
+ * ретрай прерванного запроса не создавал вторую партию и не списывал
+ * баланс повторно. null — такого ключа ещё не видели (обычный путь для
+ * первого запроса). */
+export async function getGameByClientRequestId(db: D1Database, telegramId: string, clientRequestId: string): Promise<GameState | null> {
+  const row = await db
+    .prepare('SELECT * FROM games WHERE telegram_id = ? AND client_request_id = ?')
+    .bind(telegramId, clientRequestId)
+    .first<GameRow>();
+  return row ? rowToGameState(row) : null;
 }
 
 /**

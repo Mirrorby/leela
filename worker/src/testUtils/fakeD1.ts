@@ -31,6 +31,11 @@ export function createFakeD1(): D1Database {
         if (normalized.startsWith('SELECT 1')) {
           return 1 as unknown as T;
         }
+        if (normalized.startsWith('SELECT * FROM games WHERE telegram_id = ? AND client_request_id = ?')) {
+          const [telegramId, clientRequestId] = bound as [string, string];
+          const row = rows.find((r) => r.telegram_id === telegramId && r.client_request_id === clientRequestId);
+          return (row as T) ?? null;
+        }
         if (normalized.startsWith('SELECT * FROM games WHERE id = ? AND telegram_id = ?')) {
           const [id, telegramId] = bound as [string, string];
           const row = rows.find((r) => r.id === id && r.telegram_id === telegramId);
@@ -90,6 +95,33 @@ export function createFakeD1(): D1Database {
         return { results: [], success: true, meta: {} as never };
       },
       async run(): Promise<D1Result> {
+        if (normalized.startsWith('UPDATE user_balances SET free_games_remaining = free_games_remaining - 1')) {
+          // Батч 2: списание бесплатной партии. WHERE проверяет version И
+          // free_games_remaining > 0 ОДНИМ условием — эмулируем так же: любое
+          // расхождение (гонка ИЛИ баланс уже исчерпан кем-то параллельным)
+          // даёт meta.changes = 0, вызывающий код (chargeForGame) трактует
+          // это единообразно как конфликт версии — см. комментарий там.
+          const [updatedAt, telegramId, expectedVersion] = bound as [number, string, number];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row && row.version === expectedVersion && (row.free_games_remaining as number) > 0) {
+            row.free_games_remaining = (row.free_games_remaining as number) - 1;
+            row.version = (row.version as number) + 1;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('UPDATE user_balances SET paid_games = paid_games - 1')) {
+          const [updatedAt, telegramId, expectedVersion] = bound as [number, string, number];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row && row.version === expectedVersion && (row.paid_games as number) > 0) {
+            row.paid_games = (row.paid_games as number) - 1;
+            row.version = (row.version as number) + 1;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
         if (normalized.startsWith('UPDATE user_balances SET')) {
           // Обобщённый тестовый апдейт: SET-часть в реальном запросе появится
           // только в батче 2 (списание баланса) — здесь эмулируем ЛЮБОЕ
@@ -170,6 +202,7 @@ export function createFakeD1(): D1Database {
             consecutive_sixes,
             position_before_six_series,
             request,
+            client_request_id,
           ] = bound;
           // version = 1 не приходит через bind (в реальном SQL это литерал
           // в VALUES, см. repository.ts insertGame) — задаём здесь так же.
@@ -189,6 +222,7 @@ export function createFakeD1(): D1Database {
             consecutive_sixes,
             position_before_six_series,
             request,
+            client_request_id: client_request_id ?? null,
             version: 1,
           });
           return { results: [], success: true, meta: {} as never };
