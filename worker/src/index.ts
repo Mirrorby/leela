@@ -4,9 +4,11 @@ import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
 import { insertGame, updateGame, getGameById, getGameByClientRequestId, listGamesByUser, InvalidCursorError } from './games/repository';
-import { listProducts } from './payments/catalog';
-import { getEntitlements, chargeForGame, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
+import { listProducts, getProduct } from './payments/catalog';
+import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
+import { createInvoiceLink } from './payments/invoice';
 import type { DiceMode } from './types/game';
+import type { ProductId } from './types/payments';
 
 export interface Env {
   DB: D1Database;
@@ -174,6 +176,28 @@ async function handleGetEntitlements(env: Env, auth: ValidatedInitData): Promise
   return json(entitlements);
 }
 
+/**
+ * §20 ТЗ (нет параллельных подписок) проверяется здесь, ДО обращения к Bot
+ * API — дешевле отклонить локально, чем создавать реальную ссылку на
+ * оплату, которую потом пришлось бы аннулировать вручную.
+ */
+async function handleCreateInvoice(request: Request, env: Env, auth: ValidatedInitData): Promise<Response> {
+  const body = await readJson<{ productId?: unknown }>(request);
+  const productId = typeof body?.productId === 'string' ? body.productId : null;
+  const product = productId ? getProduct(productId) : null;
+  if (!product) {
+    return json({ error: 'invalid_body', detail: 'productId is missing or unknown' }, { status: 400 });
+  }
+
+  if (product.isSubscription && (await hasActiveSubscription(env.DB, auth.telegramId))) {
+    return json({ error: 'subscription_already_active', detail: 'У вас уже есть активная подписка.' }, { status: 400 });
+  }
+
+  const transaction = await createPendingTransaction(env.DB, auth.telegramId, product.id as ProductId);
+  const invoiceUrl = await createInvoiceLink(env.BOT_TOKEN, transaction.id, product);
+  return json({ invoiceUrl });
+}
+
 async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
   const found = await getGameById(env.DB, gameId, auth.telegramId);
   if (!found) {
@@ -337,11 +361,18 @@ export default {
       return handleGetEntitlements(env, auth);
     }
 
+    if (url.pathname === '/api/v1/payments/invoice') {
+      const auth = await requireAuth(request, env);
+      if (!isValidatedInitData(auth)) return auth;
+      if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
+      return handleCreateInvoice(request, env, auth);
+    }
+
     if (url.pathname === '/telegram/webhook') {
       if (request.method !== 'POST') {
         return json({ error: 'method_not_allowed' }, { status: 405 });
       }
-      return handleTelegramWebhook(request, env.BOT_TOKEN, env.WEBHOOK_SECRET);
+      return handleTelegramWebhook(request, env.BOT_TOKEN, env.WEBHOOK_SECRET, env.DB);
     }
 
     return json({ error: 'not_found' }, { status: 404 });

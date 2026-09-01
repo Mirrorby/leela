@@ -17,6 +17,9 @@ export function createFakeD1(): D1Database {
   // обработкой successful_payment); формат строки уже зафиксирован под
   // payments/repository.ts:SubscriptionRow.
   const subscriptionRows: Array<Record<string, unknown>> = [];
+  // transactionRows (батч 3) — история платежей, см.
+  // payments/repository.ts:TransactionRow.
+  const transactionRows: Array<Record<string, unknown>> = [];
 
   function prepare(query: string) {
     let bound: unknown[] = [];
@@ -55,6 +58,16 @@ export function createFakeD1(): D1Database {
           if (matches.length === 0) return null;
           const latest = matches.slice().sort((a, b) => (b.period_end as number) - (a.period_end as number))[0];
           return (latest as T) ?? null;
+        }
+        if (normalized.startsWith('SELECT * FROM transactions WHERE id = ?')) {
+          const [id] = bound as [string];
+          const row = transactionRows.find((r) => r.id === id);
+          return (row as T) ?? null;
+        }
+        if (normalized.startsWith('SELECT * FROM transactions WHERE telegram_payment_charge_id = ?')) {
+          const [chargeId] = bound as [string];
+          const row = transactionRows.find((r) => r.telegram_payment_charge_id === chargeId);
+          return (row as T) ?? null;
         }
         return null;
       },
@@ -122,6 +135,22 @@ export function createFakeD1(): D1Database {
           }
           return { results: [], success: true, meta: { changes: 0 } as never };
         }
+        if (normalized.startsWith('UPDATE user_balances SET paid_games = paid_games + ?')) {
+          // Начисление по successful_payment (applySuccessfulPayment) —
+          // ЧИСТО аддитивно, в отличие от списания (chargeForGame) не нужна
+          // проверка version в WHERE: сложение двух чисел в одном SQL-выражении
+          // атомарно само по себе, гонка тут невозможна на уровне одного UPDATE.
+          const [grantedGames, grantedAiReviews, updatedAt, telegramId] = bound as [number, number, number, string];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row) {
+            row.paid_games = (row.paid_games as number) + grantedGames;
+            row.paid_ai_reviews = (row.paid_ai_reviews as number) + grantedAiReviews;
+            row.version = (row.version as number) + 1;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
         if (normalized.startsWith('UPDATE user_balances SET')) {
           // Обобщённый тестовый апдейт: SET-часть в реальном запросе появится
           // только в батче 2 (списание баланса) — здесь эмулируем ЛЮБОЕ
@@ -171,9 +200,53 @@ export function createFakeD1(): D1Database {
           }
           return { results: [], success: true, meta: {} as never };
         }
+        if (normalized.startsWith('INSERT INTO transactions')) {
+          const [
+            id,
+            telegram_id,
+            product_id,
+            stars_amount,
+            granted_games,
+            granted_ai_reviews,
+            granted_subscription_days,
+            created_at,
+            updated_at,
+          ] = bound as [string, string, string, number, number, number, number, number, number];
+          // status='created', telegram_payment_charge_id=NULL, is_subscription_renewal=0
+          // — литералы в реальном SQL (createPendingTransaction), не bind-параметры.
+          transactionRows.push({
+            id,
+            telegram_id,
+            product_id,
+            stars_amount,
+            status: 'created',
+            telegram_payment_charge_id: null,
+            is_subscription_renewal: 0,
+            granted_games,
+            granted_ai_reviews,
+            granted_subscription_days,
+            created_at,
+            updated_at,
+          });
+          return { results: [], success: true, meta: {} as never };
+        }
+        if (normalized.startsWith("UPDATE transactions SET status = 'successful'")) {
+          // applySuccessfulPayment — WHERE id = ? AND status = 'created'
+          // защищает от повторного начисления (см. комментарий в repository.ts).
+          const [chargeId, isRenewal, updatedAt, id] = bound as [string, number, number, string];
+          const row = transactionRows.find((r) => r.id === id && r.status === 'created');
+          if (row) {
+            row.status = 'successful';
+            row.telegram_payment_charge_id = chargeId;
+            row.is_subscription_renewal = isRenewal;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
         if (normalized.startsWith('INSERT INTO subscriptions')) {
-          // Тестовый сид (см. комментарий у subscriptionRows выше) — колонки
-          // ровно в порядке payments/repository.ts:SubscriptionRow.
+          // Порядок колонок ровно как в payments/repository.ts:SubscriptionRow
+          // (используется и тестовым сидом, и applySuccessfulPayment).
           const [id, telegram_id, period_end, auto_renew, created_at, updated_at] = bound as [
             string,
             string,
@@ -184,6 +257,29 @@ export function createFakeD1(): D1Database {
           ];
           subscriptionRows.push({ id, telegram_id, period_end, auto_renew, created_at, updated_at });
           return { results: [], success: true, meta: {} as never };
+        }
+        if (normalized.startsWith('UPDATE subscriptions SET period_end = ?, updated_at = ? WHERE id = ?')) {
+          // Продление подписки (applySuccessfulPayment, isRenewal=true).
+          const [periodEnd, updatedAt, id] = bound as [number, number, string];
+          const row = subscriptionRows.find((r) => r.id === id);
+          if (row) {
+            row.period_end = periodEnd;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('UPDATE subscriptions SET auto_renew = 0, updated_at = ? WHERE id = ?')) {
+          // markSubscriptionAutoRenewOff — отмена автопродления, period_end
+          // намеренно НЕ трогается (см. комментарий у функции).
+          const [updatedAt, id] = bound as [number, string];
+          const row = subscriptionRows.find((r) => r.id === id);
+          if (row) {
+            row.auto_renew = 0;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
         }
         if (normalized.startsWith('INSERT INTO games')) {
           const [

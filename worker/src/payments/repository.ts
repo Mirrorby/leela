@@ -1,6 +1,6 @@
-import type { Entitlements } from '../types/payments';
+import type { Entitlements, ProductId } from '../types/payments';
 import { computeEntitlements } from './entitlements';
-import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from './catalog';
+import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT, getProduct } from './catalog';
 
 export interface UserBalanceRow {
   telegram_id: string;
@@ -157,4 +157,184 @@ export async function chargeForGame(db: D1Database, telegramId: string): Promise
   }
 
   throw new InsufficientBalanceError();
+}
+
+// ----------------------------------------------------------------------
+// Батч 3: транзакции (инвойсы) и начисление по successful_payment.
+// ----------------------------------------------------------------------
+
+export interface TransactionRow {
+  id: string;
+  telegram_id: string;
+  product_id: string;
+  stars_amount: number;
+  status: 'created' | 'pending' | 'successful' | 'failed' | 'refunded';
+  telegram_payment_charge_id: string | null;
+  is_subscription_renewal: number;
+  granted_games: number;
+  granted_ai_reviews: number;
+  granted_subscription_days: number;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Уже есть активная (period_end в будущем) подписка — §20 ТЗ: у одного
+ * пользователя не должно быть параллельных подписок. Проверяется ДО
+ * создания invoice на subscription_unlimited (см. index.ts). */
+export async function hasActiveSubscription(db: D1Database, telegramId: string): Promise<boolean> {
+  const sub = await getLatestSubscription(db, telegramId);
+  return sub != null && sub.period_end > Date.now();
+}
+
+/**
+ * Создаёт "черновик" транзакции (status='created') ДО обращения к Bot API
+ * за ссылкой на инвойс — id этой строки становится invoice_payload
+ * (см. payments/invoice.ts), и именно по нему потом опознаётся
+ * pre_checkout_query/successful_payment в вебхуке (worker/src/telegram/webhook.ts).
+ * granted_* — снимок из каталога НА МОМЕНТ покупки (§28 ТЗ), не пересчитывается
+ * позже, даже если цены в catalog.ts изменятся до того, как платёж завершится.
+ */
+export async function createPendingTransaction(
+  db: D1Database,
+  telegramId: string,
+  productId: ProductId
+): Promise<TransactionRow> {
+  const product = getProduct(productId);
+  if (!product) {
+    throw new Error(`unknown productId: ${productId}`);
+  }
+  const now = Date.now();
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO transactions (
+        id, telegram_id, product_id, stars_amount, status, telegram_payment_charge_id,
+        is_subscription_renewal, granted_games, granted_ai_reviews, granted_subscription_days,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'created', NULL, 0, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, telegramId, productId, product.stars, product.grant.games, product.grant.aiReviews, product.grant.subscriptionDays, now, now)
+    .run();
+
+  return {
+    id,
+    telegram_id: telegramId,
+    product_id: productId,
+    stars_amount: product.stars,
+    status: 'created',
+    telegram_payment_charge_id: null,
+    is_subscription_renewal: 0,
+    granted_games: product.grant.games,
+    granted_ai_reviews: product.grant.aiReviews,
+    granted_subscription_days: product.grant.subscriptionDays,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+export async function getTransactionById(db: D1Database, id: string): Promise<TransactionRow | null> {
+  const row = await db.prepare('SELECT * FROM transactions WHERE id = ?').bind(id).first<TransactionRow>();
+  return row ?? null;
+}
+
+/** Идемпотентность (§14 ТЗ) — Telegram может повторно доставить
+ * successful_payment; если этот telegram_payment_charge_id уже записан у
+ * какой-то транзакции, вебхук не должен начислять повторно (см.
+ * webhook.ts:handleSuccessfulPayment). */
+export async function findTransactionByChargeId(db: D1Database, chargeId: string): Promise<TransactionRow | null> {
+  const row = await db.prepare('SELECT * FROM transactions WHERE telegram_payment_charge_id = ?').bind(chargeId).first<TransactionRow>();
+  return row ?? null;
+}
+
+/**
+ * Применяет успешный платёж: помечает транзакцию successful И начисляет
+ * доступ — единственная точка входа для обеих операций, чтобы их нельзя
+ * было случайно рассинхронизировать (пометить успешной, забыв начислить,
+ * или наоборот). Вызывается ТОЛЬКО из webhook.ts:handleSuccessfulPayment,
+ * которая сама уже проверила идемпотентность по chargeId.
+ *
+ * isRenewal (is_recurring && !is_first_recurring, см. вызывающий код) —
+ * продление подписки НЕ создаёт новую транзакцию с начислением игр (их и
+ * так не начисляет subscription_unlimited), только продлевает period_end
+ * (§18 ТЗ). subscriptionExpirationDate — секунды от Telegram (Unix time),
+ * не миллисекунды — конвертация в this функции, не у вызывающего кода,
+ * чтобы ошибка на единицах измерения не могла случиться в двух местах
+ * по-разному.
+ */
+export async function applySuccessfulPayment(
+  db: D1Database,
+  transaction: TransactionRow,
+  params: { telegramPaymentChargeId: string; isRenewal: boolean; subscriptionExpirationDateSeconds?: number }
+): Promise<void> {
+  const now = Date.now();
+
+  const updateResult = await db
+    .prepare(`UPDATE transactions SET status = 'successful', telegram_payment_charge_id = ?, is_subscription_renewal = ?, updated_at = ? WHERE id = ? AND status = 'created'`)
+    .bind(params.telegramPaymentChargeId, params.isRenewal ? 1 : 0, now, transaction.id)
+    .run();
+  if ((updateResult.meta?.changes ?? 0) === 0) {
+    // Транзакция уже не в статусе 'created' (гонка с повторной доставкой
+    // вебхука, обработанной параллельно) — findTransactionByChargeId в
+    // вызывающем коде должен был поймать это раньше, но проверяем и тут:
+    // начислять доступ ещё раз НЕЛЬЗЯ.
+    return;
+  }
+
+  if (params.isRenewal) {
+    if (params.subscriptionExpirationDateSeconds == null) {
+      throw new Error('applySuccessfulPayment: isRenewal=true без subscriptionExpirationDateSeconds');
+    }
+    // ВАЖНО: стандартный SQLite (и D1) не поддерживает ORDER BY/LIMIT в
+    // UPDATE — сначала находим id актуальной строки подписки отдельным
+    // SELECT (getLatestSubscription), затем обновляем по PRIMARY KEY.
+    const current = await getLatestSubscription(db, transaction.telegram_id);
+    if (!current) {
+      // Продление без существующей подписки — не должно случаться в
+      // норме (Telegram шлёт is_recurring только для уже оформленной
+      // подписки), но не молчим, если чем-то не так.
+      throw new Error(`applySuccessfulPayment: продление подписки для telegram_id=${transaction.telegram_id}, но подписки не найдено`);
+    }
+    await db
+      .prepare('UPDATE subscriptions SET period_end = ?, updated_at = ? WHERE id = ?')
+      .bind(params.subscriptionExpirationDateSeconds * 1000, now, current.id)
+      .run();
+    return;
+  }
+
+  if (transaction.granted_subscription_days > 0) {
+    if (params.subscriptionExpirationDateSeconds == null) {
+      throw new Error('applySuccessfulPayment: подписочный продукт без subscriptionExpirationDateSeconds');
+    }
+    await db
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), transaction.telegram_id, params.subscriptionExpirationDateSeconds * 1000, 1, now, now)
+      .run();
+    return;
+  }
+
+  if (transaction.granted_games > 0 || transaction.granted_ai_reviews > 0) {
+    await getOrCreateUserBalance(db, transaction.telegram_id); // гарантирует существование строки
+    await db
+      .prepare(
+        `UPDATE user_balances SET paid_games = paid_games + ?, paid_ai_reviews = paid_ai_reviews + ?, version = version + 1, updated_at = ?
+         WHERE telegram_id = ?`
+      )
+      .bind(transaction.granted_games, transaction.granted_ai_reviews, now, transaction.telegram_id)
+      .run();
+  }
+}
+
+/**
+ * BotSubscriptionUpdated (Update.subscription, Bot API 10.2) — единственное
+ * место во всей интеграции, где не удалось достать полный официальный
+ * список полей (см. комментарий в telegram/webhook.ts у вызывающего кода).
+ * Здесь — предельно защищённая часть: просто выключает auto_renew,
+ * НИКОГДА не трогает сам доступ (period_end не меняется) — отмена
+ * автопродления НЕ обязана обрывать уже оплаченный период (§17 ТЗ:
+ * cancelled — доступ сохраняется до period_end).
+ */
+export async function markSubscriptionAutoRenewOff(db: D1Database, telegramId: string): Promise<void> {
+  const current = await getLatestSubscription(db, telegramId);
+  if (!current) return; // Нет подписки — нечего отменять, тихо игнорируем.
+  await db.prepare('UPDATE subscriptions SET auto_renew = 0, updated_at = ? WHERE id = ?').bind(Date.now(), current.id).run();
 }
