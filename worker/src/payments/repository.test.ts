@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createFakeD1 } from '../testUtils/fakeD1';
-import { getOrCreateUserBalance, getLatestSubscription, getEntitlements } from './repository';
+import { getOrCreateUserBalance, getLatestSubscription, getEntitlements, chargeForAiReview, refundAiReviewCharge, InsufficientBalanceError } from './repository';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from './catalog';
 
 describe('getOrCreateUserBalance', () => {
@@ -87,5 +87,65 @@ describe('getEntitlements', () => {
     const first = await getEntitlements(db, 'user-1');
     const second = await getEntitlements(db, 'user-1');
     expect(second).toEqual(first);
+  });
+});
+
+describe('chargeForAiReview / refundAiReviewCharge (батч 4)', () => {
+  it('первое списание берётся из бесплатного разбора', async () => {
+    const db = createFakeD1();
+    await getOrCreateUserBalance(db, 'user-1'); // free_ai_reviews_remaining = 1
+    const result = await chargeForAiReview(db, 'user-1');
+    expect(result.source).toBe('free');
+    const balance = await getOrCreateUserBalance(db, 'user-1');
+    expect(balance.free_ai_reviews_remaining).toBe(0);
+  });
+
+  it('после исчерпания бесплатного — списывается платный', async () => {
+    const db = createFakeD1();
+    await getOrCreateUserBalance(db, 'user-1');
+    await chargeForAiReview(db, 'user-1'); // тратим бесплатный
+    await db.prepare('UPDATE user_balances SET paid_ai_reviews = ? WHERE telegram_id = ?').bind(3, 'user-1').run();
+
+    const result = await chargeForAiReview(db, 'user-1');
+    expect(result.source).toBe('paid');
+    const balance = await getOrCreateUserBalance(db, 'user-1');
+    expect(balance.paid_ai_reviews).toBe(2);
+  });
+
+  it('нет ни бесплатных, ни платных разборов — InsufficientBalanceError', async () => {
+    const db = createFakeD1();
+    await getOrCreateUserBalance(db, 'user-1');
+    await chargeForAiReview(db, 'user-1'); // тратим единственный бесплатный
+    await expect(chargeForAiReview(db, 'user-1')).rejects.toThrow(InsufficientBalanceError);
+  });
+
+  it('§3.3 ТЗ: активная подписка НЕ покрывает ИИ-разборы — списание всё равно идёт с баланса разборов', async () => {
+    const db = createFakeD1();
+    await getOrCreateUserBalance(db, 'user-1');
+    await db
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', 'user-1', Date.now() + 100000, 1, Date.now(), Date.now())
+      .run();
+    const result = await chargeForAiReview(db, 'user-1');
+    expect(result.source).toBe('free'); // не 'subscription' — такого варианта не существует для разборов
+  });
+
+  it('refundAiReviewCharge("free") возвращает именно бесплатный счётчик', async () => {
+    const db = createFakeD1();
+    await getOrCreateUserBalance(db, 'user-1');
+    await chargeForAiReview(db, 'user-1');
+    expect((await getOrCreateUserBalance(db, 'user-1')).free_ai_reviews_remaining).toBe(0);
+
+    await refundAiReviewCharge(db, 'user-1', 'free');
+    expect((await getOrCreateUserBalance(db, 'user-1')).free_ai_reviews_remaining).toBe(1);
+  });
+
+  it('refundAiReviewCharge("paid") возвращает именно платный счётчик, не трогая бесплатный', async () => {
+    const db = createFakeD1();
+    await getOrCreateUserBalance(db, 'user-1');
+    await refundAiReviewCharge(db, 'user-1', 'paid');
+    const balance = await getOrCreateUserBalance(db, 'user-1');
+    expect(balance.paid_ai_reviews).toBe(1);
+    expect(balance.free_ai_reviews_remaining).toBe(FREE_AI_REVIEWS_DEFAULT); // не тронут
   });
 });

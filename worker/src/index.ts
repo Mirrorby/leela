@@ -5,9 +5,12 @@ import { validateInitData, extractInitData, type ValidatedInitData } from './tel
 import { handleTelegramWebhook } from './telegram/webhook';
 import { insertGame, updateGame, getGameById, getGameByClientRequestId, listGamesByUser, InvalidCursorError } from './games/repository';
 import { listProducts, getProduct } from './payments/catalog';
-import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
+import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, chargeForAiReview, refundAiReviewCharge, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
 import { createInvoiceLink } from './payments/invoice';
-import type { DiceMode } from './types/game';
+import { getAiReview, upsertAiReviewPending, markAiReviewReady, markAiReviewFailed } from './ai/reviewRepository';
+import { buildReviewPrompt } from './ai/reviewPrompt';
+import { generateReview } from './ai/geminiClient';
+import type { DiceMode, GameState } from './types/game';
 import type { ProductId } from './types/payments';
 
 export interface Env {
@@ -15,6 +18,10 @@ export interface Env {
   // Секреты, добавляются через Cloudflare Dashboard (не в этом файле):
   BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
+  /** Батч 4 — ИИ-разбор партии через Gemini 2.5 Flash (не Anthropic, по
+   * прямому требованию). Добавляется в Cloudflare Dashboard так же, как
+   * BOT_TOKEN/WEBHOOK_SECRET. */
+  GEMINI_API_KEY: string;
 }
 
 // Пока в проекте всего один ruleset — захардкожен здесь намеренно (см.
@@ -198,6 +205,101 @@ async function handleCreateInvoice(request: Request, env: Env, auth: ValidatedIn
   return json({ invoiceUrl });
 }
 
+// ----------------------------------------------------------------------
+// Батч 4: ИИ-разбор партии (Gemini 2.5 Flash — по требованию, не Anthropic).
+// ----------------------------------------------------------------------
+
+/**
+ * Сама генерация выполняется В ФОНЕ через ctx.waitUntil (см. вызывающий код
+ * handleStartAiReview) — HTTP-ответ уходит клиенту сразу со статусом
+ * 'pending', а не ждёт ответа Gemini синхронно (генерация может занять
+ * несколько секунд, незачем держать открытым HTTP-запрос клиента и рисковать
+ * его собственным таймаутом). Клиент узнаёт результат через поллинг
+ * GET .../analysis (handleGetAiReview).
+ *
+ * §12 ТЗ — при технической ошибке возвращаем списанный разбор на баланс, ИЗ
+ * ТОГО ЖЕ источника (free/paid), откуда списали для этой попытки
+ * (chargedFrom передаётся явно, а не перечитывается из БД — на случай, если
+ * между списанием и этим моментом строка ai_reviews успела ещё раз
+ * измениться, мы всё равно возвращаем ровно то, что списали именно мы).
+ */
+async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, chargedFrom: 'free' | 'paid'): Promise<void> {
+  try {
+    const prompt = buildReviewPrompt(game);
+    const text = await generateReview(env.GEMINI_API_KEY, prompt);
+    await markAiReviewReady(env.DB, game.id, text);
+  } catch (err) {
+    await markAiReviewFailed(env.DB, game.id, err instanceof Error ? err.message : String(err));
+    await refundAiReviewCharge(env.DB, telegramId, chargedFrom);
+  }
+}
+
+async function handleStartAiReview(env: Env, ctx: ExecutionContext, auth: ValidatedInitData, gameId: string): Promise<Response> {
+  const found = await getGameById(env.DB, gameId, auth.telegramId);
+  if (!found) {
+    return json({ error: 'not_found' }, { status: 404 });
+  }
+  const game = found.game;
+
+  if (game.status !== 'FINISHED' && game.status !== 'ARCHIVED') {
+    return json({ error: 'invalid_state', detail: 'ИИ-разбор доступен только для завершённой партии.' }, { status: 400 });
+  }
+
+  const existing = await getAiReview(env.DB, gameId);
+  if (existing?.status === 'ready') {
+    // §11 ТЗ: повторный просмотр готового разбора — бесплатно, ничего не
+    // списываем повторно.
+    return json({ status: 'ready', content: existing.content });
+  }
+  if (existing?.status === 'pending') {
+    // Защита от двойного клика — не начинаем вторую генерацию (и не
+    // списываем баланс дважды) поверх уже идущей.
+    return json({ error: 'already_generating' }, { status: 409 });
+  }
+
+  let chargeSource: 'free' | 'paid';
+  try {
+    const result = await chargeForAiReview(env.DB, auth.telegramId);
+    chargeSource = result.source;
+  } catch (err) {
+    if (err instanceof InsufficientBalanceError) {
+      return json(
+        {
+          error: 'analysis_locked',
+          detail: 'Бесплатный и купленные ИИ-разборы закончились.',
+          products: listProducts().filter((p) => p.grant.aiReviews > 0),
+        },
+        { status: 402 }
+      );
+    }
+    if (err instanceof BalanceVersionConflictError) {
+      return json({ error: 'version_conflict', detail: 'Баланс изменился параллельно — попробуйте ещё раз.' }, { status: 409 });
+    }
+    throw err;
+  }
+
+  await upsertAiReviewPending(env.DB, gameId, auth.telegramId, chargeSource);
+  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, chargeSource));
+
+  return json({ status: 'pending' }, { status: 202 });
+}
+
+async function handleGetAiReview(env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
+  // getGameById уже скопирован по telegram_id — подтверждает, что партия
+  // принадлежит запрашивающему, ДО чтения самого разбора (ai_reviews не
+  // хранит собственной проверки владения на уровне запроса, полагается на
+  // эту проверку выше по стеку).
+  const found = await getGameById(env.DB, gameId, auth.telegramId);
+  if (!found) {
+    return json({ error: 'not_found' }, { status: 404 });
+  }
+  const review = await getAiReview(env.DB, gameId);
+  if (!review) {
+    return json({ status: 'none' });
+  }
+  return json({ status: review.status, content: review.content, error: review.error });
+}
+
 async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
   const found = await getGameById(env.DB, gameId, auth.telegramId);
   if (!found) {
@@ -297,7 +399,7 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
 }
 
 export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -336,6 +438,20 @@ export default {
       const rollsMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/rolls$/);
       if (rollsMatch) {
         if (request.method === 'POST') return handleRoll(request, env, auth, rollsMatch[1]);
+        return json({ error: 'method_not_allowed' }, { status: 405 });
+      }
+
+      // /api/v1/games/:id/analysis/start
+      const analysisStartMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/analysis\/start$/);
+      if (analysisStartMatch) {
+        if (request.method === 'POST') return handleStartAiReview(env, ctx, auth, analysisStartMatch[1]);
+        return json({ error: 'method_not_allowed' }, { status: 405 });
+      }
+
+      // /api/v1/games/:id/analysis
+      const analysisMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/analysis$/);
+      if (analysisMatch) {
+        if (request.method === 'GET') return handleGetAiReview(env, auth, analysisMatch[1]);
         return json({ error: 'method_not_allowed' }, { status: 405 });
       }
 

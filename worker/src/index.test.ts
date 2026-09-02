@@ -5,7 +5,7 @@ import { buildSignedInitData, freshAuthDate, TEST_BOT_TOKEN } from './testUtils/
 import { getOrCreateUserBalance } from './payments/repository';
 
 function makeEnv(): Env {
-  return { DB: createFakeD1(), BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'test-webhook-secret' };
+  return { DB: createFakeD1(), BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'test-webhook-secret', GEMINI_API_KEY: 'test-gemini-key' };
 }
 
 async function authHeaderFor(telegramId: number): Promise<string> {
@@ -39,7 +39,21 @@ async function readJson(res: Response): Promise<any> {
   return res.json();
 }
 
-const fakeCtx = {} as ExecutionContext;
+// ctx.waitUntil (батч 4): фоновая генерация ИИ-разбора запускается через
+// него (см. index.ts:handleStartAiReview), а не await'ится синхронно в
+// HTTP-ответе — тесты, проверяющие результат генерации, должны уметь
+// детерминированно дождаться завершения фоновой задачи, а не полагаться на
+// то, что микротаска успеет выполниться сама по себе до следующей проверки.
+const pendingWaitUntil: Promise<unknown>[] = [];
+const fakeCtx = {
+  waitUntil(promise: Promise<unknown>) {
+    pendingWaitUntil.push(promise);
+  },
+} as unknown as ExecutionContext;
+
+async function flushWaitUntil(): Promise<void> {
+  await Promise.allSettled(pendingWaitUntil.splice(0));
+}
 
 describe('worker routes', () => {
   let env: Env;
@@ -928,5 +942,322 @@ describe('монетизация (батч 2) — списание партий,
     const { res, body } = await createGame(auth);
     expect(res.status).toBe(409);
     expect(body.error).toBe('version_conflict');
+  });
+});
+
+describe('монетизация (батч 3, найденный пробел покрываем сейчас) — POST /api/v1/payments/invoice', () => {
+  let env: Env;
+
+  beforeEach(() => {
+    env = makeEnv();
+    vi.restoreAllMocks();
+  });
+
+  it('без авторизации — 401', async () => {
+    const res = await worker.fetch(req('/api/v1/payments/invoice', { method: 'POST' }), env, fakeCtx);
+    expect(res.status).toBe(401);
+  });
+
+  it('неизвестный productId — 400', async () => {
+    const auth = await authHeaderFor(30001);
+    const res = await worker.fetch(
+      req('/api/v1/payments/invoice', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: 'no-such-product' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('валидный productId — создаёт транзакцию и возвращает invoiceUrl из createInvoiceLink', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, result: 'https://t.me/invoice/abc' }), { status: 200 })
+    );
+    const auth = await authHeaderFor(30002);
+    const res = await worker.fetch(
+      req('/api/v1/payments/invoice', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: 'game_5' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.invoiceUrl).toBe('https://t.me/invoice/abc');
+
+    // Тело запроса к Bot API должно нести цену/название именно этого продукта.
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const sentBody = JSON.parse((init as RequestInit).body as string);
+    expect(sentBody.prices[0].amount).toBe(299);
+    expect(sentBody.currency).toBe('XTR');
+  });
+
+  it('§20 ТЗ: попытка купить подписку при уже активной подписке — 400 subscription_already_active, invoice НЕ создаётся', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true, result: 'https://t.me/invoice/x' }), { status: 200 }));
+    const auth = await authHeaderFor(30003);
+    const telegramId = String(30003);
+    await getOrCreateUserBalance(env.DB, telegramId);
+    await env.DB
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', telegramId, Date.now() + 100000, 1, Date.now(), Date.now())
+      .run();
+
+    const res = await worker.fetch(
+      req('/api/v1/payments/invoice', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: 'subscription_unlimited' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(400);
+    const body = await readJson(res);
+    expect(body.error).toBe('subscription_already_active');
+    expect(fetchSpy).not.toHaveBeenCalled(); // дешевле отклонить локально, не дошли до Bot API
+  });
+
+  it('продукт-подписка без активной подписки — invoice создаётся с subscription_period', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, result: 'https://t.me/invoice/sub' }), { status: 200 })
+    );
+    const auth = await authHeaderFor(30004);
+    const res = await worker.fetch(
+      req('/api/v1/payments/invoice', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: 'subscription_unlimited' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(200);
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const sentBody = JSON.parse((init as RequestInit).body as string);
+    expect(sentBody.subscription_period).toBe(2592000);
+  });
+});
+
+describe('монетизация (батч 4) — ИИ-разбор партии (Gemini)', () => {
+  let env: Env;
+
+  beforeEach(() => {
+    env = makeEnv();
+    vi.restoreAllMocks();
+    pendingWaitUntil.length = 0;
+  });
+
+  function geminiOk(text: string): Response {
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
+  }
+
+  async function createFinishedGame(auth: string, telegramId: number): Promise<string> {
+    await grantUnlimitedGamesForTest(env, telegramId);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+    // Напрямую метим партию завершённой — не гонять реальный движок до
+    // финиша ради теста, который проверяет саму механику ИИ-разбора, а не
+    // игровую логику (она уже покрыта gameEngine.test.ts).
+    await env.DB.prepare("UPDATE games SET status = 'FINISHED' WHERE id = ?").bind(created.game.id).run();
+    return created.game.id as string;
+  }
+
+  it('партия не найдена — 404', async () => {
+    const auth = await authHeaderFor(40001);
+    const res = await worker.fetch(req('/api/v1/games/no-such-game/analysis/start', { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    expect(res.status).toBe(404);
+  });
+
+  it('партия ещё не завершена — 400 invalid_state, баланс не трогается', async () => {
+    const auth = await authHeaderFor(40002);
+    await grantUnlimitedGamesForTest(env, 40002);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+
+    const res = await worker.fetch(
+      req(`/api/v1/games/${created.game.id}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(400);
+    expect((await readJson(res)).error).toBe('invalid_state');
+
+    const entitlements = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(entitlements.freeAiReviewsRemaining).toBe(1); // не списано
+  });
+
+  it('успешная генерация: pending сразу, ready после фоновой задачи, баланс списан один раз', async () => {
+    // Управляемый fetch — не резолвится сам по себе, иначе фоновая задача
+    // (ctx.waitUntil) успевает завершиться раньше следующего await в тесте
+    // (микротаски мока без реальной задержки I/O разрешаются практически
+    // мгновенно), и "pending"-окно нечем поймать детерминированно.
+    let resolveFetch!: (value: Response) => void;
+    const pendingFetch = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(pendingFetch);
+
+    const auth = await authHeaderFor(40003);
+    const gameId = await createFinishedGame(auth, 40003);
+
+    const startRes = await worker.fetch(
+      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    expect(startRes.status).toBe(202);
+    expect((await readJson(startRes)).status).toBe('pending');
+
+    const pendingGet = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(pendingGet.status).toBe('pending');
+
+    resolveFetch(geminiOk('Твой путь начался с рождения и привёл к заблуждению...'));
+    await flushWaitUntil();
+
+    const readyGet = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(readyGet.status).toBe('ready');
+    expect(readyGet.content.length).toBeGreaterThan(0);
+
+    const entitlements = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(entitlements.freeAiReviewsRemaining).toBe(0);
+  });
+
+  it('повторный запрос после ready — не списывает баланс снова, отдаёт кэш', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiOk('Готовый разбор'));
+    const auth = await authHeaderFor(40004);
+    const gameId = await createFinishedGame(auth, 40004);
+
+    await worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    await flushWaitUntil();
+
+    const secondStart = await worker.fetch(
+      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    expect(secondStart.status).toBe(200);
+    const body = await readJson(secondStart);
+    expect(body.status).toBe('ready');
+    expect(body.content).toBe('Готовый разбор');
+
+    const entitlements = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(entitlements.freeAiReviewsRemaining).toBe(0); // списано один раз, не два
+  });
+
+  it('повторный клик пока ещё pending — 409 already_generating, не запускает вторую генерацию', async () => {
+    let resolveFetch!: (value: Response) => void;
+    const pendingFetch = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(pendingFetch);
+
+    const auth = await authHeaderFor(40005);
+    const gameId = await createFinishedGame(auth, 40005);
+
+    await worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    // fetch ещё "висит" — генерация реально не завершена, второй клик
+    // застаёт настоящий pending, а не то, что уже успело стать ready.
+    const secondRes = await worker.fetch(
+      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    expect(secondRes.status).toBe(409);
+    expect((await readJson(secondRes)).error).toBe('already_generating');
+
+    resolveFetch(geminiOk('Разбор'));
+    await flushWaitUntil();
+    const entitlements = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(entitlements.freeAiReviewsRemaining).toBe(0); // списано ровно один раз
+  });
+
+  it('баланс исчерпан (free и paid = 0) — 402 analysis_locked, партия не помечается pending', async () => {
+    const auth = await authHeaderFor(40006);
+    const gameId = await createFinishedGame(auth, 40006);
+    await env.DB.prepare('UPDATE user_balances SET free_ai_reviews_remaining = 0 WHERE telegram_id = ?').bind(String(40006)).run();
+
+    const res = await worker.fetch(
+      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(402);
+    expect((await readJson(res)).error).toBe('analysis_locked');
+
+    const getRes = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(getRes.status).toBe('none');
+  });
+
+  it('§12 ТЗ: сбой Gemini — статус failed И баланс возвращается на счётчик, с которого списали', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('rate limited', { status: 429 }));
+    const auth = await authHeaderFor(40007);
+    const gameId = await createFinishedGame(auth, 40007);
+
+    await worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    await flushWaitUntil();
+
+    const getRes = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(getRes.status).toBe('failed');
+    expect(getRes.error).toContain('429');
+
+    const entitlements = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(entitlements.freeAiReviewsRemaining).toBe(1); // возвращён — не потерян
+  });
+
+  it('после сбоя и возврата баланса — повторная попытка снова списывает и может завершиться успехом', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockResolvedValueOnce(new Response('fail', { status: 500 }));
+    const auth = await authHeaderFor(40008);
+    const gameId = await createFinishedGame(auth, 40008);
+
+    await worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    await flushWaitUntil();
+    expect((await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx))).status).toBe(
+      'failed'
+    );
+
+    fetchMock.mockResolvedValueOnce(geminiOk('Успешный повтор'));
+    await worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    await flushWaitUntil();
+
+    const finalGet = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(finalGet.status).toBe('ready');
+    expect(finalGet.content).toBe('Успешный повтор');
+  });
+
+  it('чужая партия — 404, а не доступ к чужому разбору', async () => {
+    const authOwner = await authHeaderFor(40009);
+    const gameId = await createFinishedGame(authOwner, 40009);
+    const authStranger = await authHeaderFor(40010);
+
+    const res = await worker.fetch(
+      req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: authStranger } }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(404);
   });
 });

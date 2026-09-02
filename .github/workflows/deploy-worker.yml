@@ -14,6 +14,11 @@ on:
       # обновился. Явно перечисляем всё, что воркер импортирует извне своей
       # папки.
       - "src/data/rulesets/**"
+      # Батч 4 (ИИ-разбор): worker/src/ai/reviewContentLoader.ts точно так же
+      # напрямую импортирует src/data/content/ru/cells.json — тот же класс
+      # бага, что уже был найден для rulesets выше, закрываем сразу, не
+      # дожидаясь повторного наступления.
+      - "src/data/content/**"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch: {}
 

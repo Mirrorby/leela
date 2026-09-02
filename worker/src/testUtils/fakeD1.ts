@@ -20,6 +20,9 @@ export function createFakeD1(): D1Database {
   // transactionRows (батч 3) — история платежей, см.
   // payments/repository.ts:TransactionRow.
   const transactionRows: Array<Record<string, unknown>> = [];
+  // aiReviewRows (батч 4) — см. ai/reviewRepository.ts:AiReviewRow.
+  // game_id уникален (PRIMARY KEY, эмулирует ON CONFLICT(game_id) DO UPDATE).
+  const aiReviewRows: Array<Record<string, unknown>> = [];
 
   function prepare(query: string) {
     let bound: unknown[] = [];
@@ -67,6 +70,11 @@ export function createFakeD1(): D1Database {
         if (normalized.startsWith('SELECT * FROM transactions WHERE telegram_payment_charge_id = ?')) {
           const [chargeId] = bound as [string];
           const row = transactionRows.find((r) => r.telegram_payment_charge_id === chargeId);
+          return (row as T) ?? null;
+        }
+        if (normalized.startsWith('SELECT * FROM ai_reviews WHERE game_id = ?')) {
+          const [gameId] = bound as [string];
+          const row = aiReviewRows.find((r) => r.game_id === gameId);
           return (row as T) ?? null;
         }
         return null;
@@ -129,6 +137,56 @@ export function createFakeD1(): D1Database {
           const row = balanceRows.find((r) => r.telegram_id === telegramId);
           if (row && row.version === expectedVersion && (row.paid_games as number) > 0) {
             row.paid_games = (row.paid_games as number) - 1;
+            row.version = (row.version as number) + 1;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('UPDATE user_balances SET free_ai_reviews_remaining = free_ai_reviews_remaining - 1')) {
+          // Батч 4: списание бесплатного ИИ-разбора (chargeForAiReview) —
+          // тот же паттерн condition-в-WHERE, что у free_games_remaining выше.
+          const [updatedAt, telegramId, expectedVersion] = bound as [number, string, number];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row && row.version === expectedVersion && (row.free_ai_reviews_remaining as number) > 0) {
+            row.free_ai_reviews_remaining = (row.free_ai_reviews_remaining as number) - 1;
+            row.version = (row.version as number) + 1;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('UPDATE user_balances SET paid_ai_reviews = paid_ai_reviews - 1')) {
+          const [updatedAt, telegramId, expectedVersion] = bound as [number, string, number];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row && row.version === expectedVersion && (row.paid_ai_reviews as number) > 0) {
+            row.paid_ai_reviews = (row.paid_ai_reviews as number) - 1;
+            row.version = (row.version as number) + 1;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('UPDATE user_balances SET free_ai_reviews_remaining = free_ai_reviews_remaining + 1')) {
+          // refundAiReviewCharge (§12 ТЗ) — аддитивно, версия проверяется не
+          // строго (тот же довод, что у начисления по платежу): возврат
+          // счётчика назад не может логически конфликтовать с параллельным
+          // списанием так, чтобы это было опасно потерять.
+          const [updatedAt, telegramId] = bound as [number, string];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row) {
+            row.free_ai_reviews_remaining = (row.free_ai_reviews_remaining as number) + 1;
+            row.version = (row.version as number) + 1;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('UPDATE user_balances SET paid_ai_reviews = paid_ai_reviews + 1')) {
+          const [updatedAt, telegramId] = bound as [number, string];
+          const row = balanceRows.find((r) => r.telegram_id === telegramId);
+          if (row) {
+            row.paid_ai_reviews = (row.paid_ai_reviews as number) + 1;
             row.version = (row.version as number) + 1;
             row.updated_at = updatedAt;
             return { results: [], success: true, meta: { changes: 1 } as never };
@@ -277,6 +335,68 @@ export function createFakeD1(): D1Database {
           if (row) {
             row.auto_renew = 0;
             row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith('INSERT INTO ai_reviews')) {
+          // upsertAiReviewPending — ON CONFLICT(game_id) DO UPDATE: если
+          // строка уже есть (повторная попытка после 'failed'), обновляем её
+          // на месте, а не дублируем (game_id — PRIMARY KEY).
+          const [gameId, telegramId, chargedFrom, createdAt, updatedAt] = bound as [string, string, string, number, number];
+          const existing = aiReviewRows.find((r) => r.game_id === gameId);
+          if (existing) {
+            existing.status = 'pending';
+            existing.charged_from = chargedFrom;
+            existing.error = null;
+            existing.updated_at = updatedAt;
+          } else {
+            aiReviewRows.push({
+              game_id: gameId,
+              telegram_id: telegramId,
+              status: 'pending',
+              charged_from: chargedFrom,
+              content: null,
+              error: null,
+              created_at: createdAt,
+              updated_at: updatedAt,
+            });
+          }
+          return { results: [], success: true, meta: {} as never };
+        }
+        if (normalized.startsWith("UPDATE ai_reviews SET status = 'ready'")) {
+          const [content, updatedAt, gameId] = bound as [string, number, string];
+          const row = aiReviewRows.find((r) => r.game_id === gameId);
+          if (row) {
+            row.status = 'ready';
+            row.content = content;
+            row.error = null;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized.startsWith("UPDATE ai_reviews SET status = 'failed'")) {
+          const [errorText, updatedAt, gameId] = bound as [string, number, string];
+          const row = aiReviewRows.find((r) => r.game_id === gameId);
+          if (row) {
+            row.status = 'failed';
+            row.error = errorText;
+            row.updated_at = updatedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
+        }
+        if (normalized === "UPDATE games SET status = 'FINISHED' WHERE id = ?") {
+          // Тестовый хелпер (index.test.ts:createFinishedGame, батч 4) —
+          // напрямую метит партию завершённой в обход движка, чтобы тесты
+          // ИИ-разбора не гоняли реальную партию до финиша. Отдельная узкая
+          // ветка, а не через основной 'UPDATE games SET' (тот жёстко
+          // завязан на позиционный список из 12 полей продового updateGame).
+          const [gameId] = bound as [string];
+          const row = rows.find((r) => r.id === gameId);
+          if (row) {
+            row.status = 'FINISHED';
             return { results: [], success: true, meta: { changes: 1 } as never };
           }
           return { results: [], success: true, meta: { changes: 0 } as never };
