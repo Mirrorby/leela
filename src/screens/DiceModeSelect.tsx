@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import type { DiceMode } from '../types/game';
+import { WorkerApiError } from '../api/workerClient';
 
 export function DiceModeSelect({ session, nav }: ScreenProps) {
   // Локальный pending, а не session.isBusy: session.isBusy предполагается
@@ -20,8 +21,18 @@ export function DiceModeSelect({ session, nav }: ScreenProps) {
       // просто не переходим на GameHome и остаёмся на этом экране.
       await session.startGame({ diceMode: mode });
       nav.resetTo('GameHome');
-    } catch {
-      // Ошибка уже отражена в session.error и покажется ниже.
+    } catch (err) {
+      // 402 games_limit_reached (батч 6 монетизации) — НЕ обычная сетевая
+      // ошибка: session.error в этом случае НЕ выставлен (см.
+      // useGameSession.startGame — намеренно, чтобы не мигать инлайновым
+      // текстом ошибки прямо перед уходом на отдельный экран пэйвола).
+      // push, не resetTo — "Назад" с пэйвола должен вернуть сюда же, к
+      // выбору режима кубика, а не на пустое место.
+      const isPaywall = err instanceof WorkerApiError && err.status === 402 && (err.body as { error?: string } | null)?.error === 'games_limit_reached';
+      if (isPaywall) {
+        nav.push('Paywall');
+      }
+      // Иначе — ошибка уже отражена в session.error и покажется ниже.
     } finally {
       setPending(null);
     }

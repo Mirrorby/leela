@@ -191,6 +191,10 @@ export function MyGames({ session, nav }: ScreenProps) {
         </button>
       )}
       <button onClick={handleNewGame}>Новая партия</button>
+      {/* Батч 6 монетизации: единственная точка входа на экран "Ваш доступ"
+          (§24 ТЗ) — MyGames уже служит своего рода аккаунт-хабом, отдельная
+          иконка в topbar GameHome ради этого не заводилась. */}
+      <button onClick={() => nav.push('YourAccess')}>Ваш доступ</button>
       <button onClick={() => nav.pop()}>Назад</button>
     </div>
   );

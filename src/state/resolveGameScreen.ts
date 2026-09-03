@@ -63,7 +63,18 @@ export function resolveGameScreen(screen: ScreenName, game: GameState | null): S
 // нормализация была только в App.tsx, и запись с незнакомым именем экрана,
 // выбранная через "Мои партии", падала бы при рендере (screens[name]
 // оказывался undefined).
-const KNOWN_SCREENS = new Set<ScreenName>(['Splash', 'MyGames', 'Intro', 'RequestInput', 'DiceModeSelect', 'GameHome', 'History', 'Summary']);
+const KNOWN_SCREENS = new Set<ScreenName>([
+  'Splash',
+  'MyGames',
+  'Intro',
+  'RequestInput',
+  'DiceModeSelect',
+  'GameHome',
+  'History',
+  'Summary',
+  'Paywall',
+  'YourAccess',
+]);
 
 export function normalizeScreenName(name: string): ScreenName {
   // FinishScreen (п.8 правок): раньше отдельный промежуточный шаг "Партия

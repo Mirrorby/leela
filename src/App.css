@@ -726,3 +726,30 @@ button.icon-button {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* --- Монетизация (батч 6): "Ваш доступ" и ИИ-разбор на Summary --- */
+
+.access-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+}
+
+.ai-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.ai-review-content {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  white-space: pre-wrap;
+}

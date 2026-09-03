@@ -17,7 +17,9 @@ export type ScreenName =
   | 'DiceModeSelect'
   | 'GameHome'
   | 'History'
-  | 'Summary';
+  | 'Summary'
+  | 'Paywall'
+  | 'YourAccess';
 
 export interface ScreenEntry {
   name: ScreenName;

@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createGameOnServer, rollOnServer, listGamesOnServer, WorkerApiError } from './workerClient';
+import {
+  createGameOnServer,
+  rollOnServer,
+  listGamesOnServer,
+  getProductsFromServer,
+  getEntitlementsFromServer,
+  createInvoiceOnServer,
+  startAiReviewOnServer,
+  getAiReviewFromServer,
+  logClientAnalyticsEvent,
+  WorkerApiError,
+} from './workerClient';
 import * as telegramAdapter from '../telegram/telegramAdapter';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -15,18 +26,18 @@ describe('workerClient', () => {
     vi.restoreAllMocks();
   });
 
-  it('createGameOnServer шлёт POST с телом {request, diceMode} и заголовком Authorization: tma <initData>', async () => {
+  it('createGameOnServer шлёт POST с телом {request, diceMode, clientRequestId} и заголовком Authorization: tma <initData>', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({ game: { id: 'g1', request: 'test', diceMode: 'virtual' } }, 201)
     );
 
-    const game = await createGameOnServer('test', 'virtual');
+    const game = await createGameOnServer('test', 'virtual', 'client-req-1');
 
     expect(game.id).toBe('g1');
     const [url, init] = fetchSpy.mock.calls[0];
     expect(String(url)).toContain('/api/v1/games');
     expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual({ request: 'test', diceMode: 'virtual' });
+    expect(JSON.parse(init?.body as string)).toEqual({ request: 'test', diceMode: 'virtual', clientRequestId: 'client-req-1' });
     const headers = init?.headers as Record<string, string>;
     expect(headers.Authorization).toBe('tma auth_date=1&user=%7B%22id%22%3A1%7D&hash=abc');
   });
@@ -112,5 +123,49 @@ describe('workerClient', () => {
 
     expect(page.games).toHaveLength(1);
     expect(page.nextCursor).toBe('next-page-token');
+  });
+
+  it('getProductsFromServer возвращает каталог продуктов', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ products: [{ id: 'game_1', stars: 79 }] }));
+    const products = await getProductsFromServer();
+    expect(products).toEqual([{ id: 'game_1', stars: 79 }]);
+  });
+
+  it('getEntitlementsFromServer возвращает тело ответа как есть (без обёртки)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ freeGamesRemaining: 2, canStartGame: true }));
+    const entitlements = await getEntitlementsFromServer();
+    expect(entitlements.freeGamesRemaining).toBe(2);
+  });
+
+  it('createInvoiceOnServer шлёт productId и возвращает invoiceUrl', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ invoiceUrl: 'https://t.me/invoice/x' }));
+    const url = await createInvoiceOnServer('game_5');
+    expect(url).toBe('https://t.me/invoice/x');
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(JSON.parse(init?.body as string)).toEqual({ productId: 'game_5' });
+  });
+
+  it('startAiReviewOnServer POST на .../analysis/start', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 'pending' }));
+    const result = await startAiReviewOnServer('game-1');
+    expect(result.status).toBe('pending');
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toContain('/api/v1/games/game-1/analysis/start');
+    expect(init?.method).toBe('POST');
+  });
+
+  it('getAiReviewFromServer GET на .../analysis', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 'ready', content: 'Разбор' }));
+    const result = await getAiReviewFromServer('game-1');
+    expect(result.status).toBe('ready');
+    expect(result.content).toBe('Разбор');
+  });
+
+  it('logClientAnalyticsEvent шлёт event в теле', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+    await logClientAnalyticsEvent('ai_offer_shown');
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toContain('/api/v1/analytics/event');
+    expect(JSON.parse(init?.body as string)).toEqual({ event: 'ai_offer_shown' });
   });
 });

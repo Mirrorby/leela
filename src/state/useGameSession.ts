@@ -72,6 +72,24 @@ export function useGameSession() {
     return id;
   }
 
+  // Тот же принцип идемпотентности, что у pendingRollIdRef выше, но для
+  // СОЗДАНИЯ партии (батч 6 фронтенда — бэкенд уже поддерживал clientRequestId
+  // с батча 2, но фронт до сих пор его не отправлял: см. найденный тогда же
+  // баг п.2 в изначальном ревью — ретрай после потерянного ответа мог
+  // списать баланс за партию дважды). Здесь нет "gameId" для привязки (сама
+  // партия ещё не существует) — id стабилен для одной незавершённой попытки
+  // startGame() и сбрасывается на успех/reset().
+  const pendingStartGameIdRef = useRef<string | null>(null);
+  const startGameIdCounterRef = useRef(0);
+
+  function takeStartGameClientRequestId(): string {
+    if (pendingStartGameIdRef.current) return pendingStartGameIdRef.current;
+    startGameIdCounterRef.current += 1;
+    const id = `client-start-${Date.now()}-${startGameIdCounterRef.current}`;
+    pendingStartGameIdRef.current = id;
+    return id;
+  }
+
   // Ruleset активной партии, а не константа — см. комментарий у RULESET_ID.
   const activeRulesetId = game?.rulesetId ?? RULESET_ID;
   const ruleset = getRuleset(activeRulesetId);
@@ -104,16 +122,27 @@ export function useGameSession() {
       const effectiveDiceMode = overrides?.diceMode ?? diceMode;
       setIsBusy(true);
       setError(null);
+      const clientRequestId = takeStartGameClientRequestId();
       try {
-        const newGame = await createGameOnServer(request, effectiveDiceMode);
+        const newGame = await createGameOnServer(request, effectiveDiceMode, clientRequestId);
         setGame(newGame);
         setLastEvents([]);
         setLastRollValue(null);
         setLastMove(null);
         pendingRollIdRef.current = null;
+        pendingStartGameIdRef.current = null;
         return newGame;
       } catch (err) {
-        setError(errorMessage(err, 'Не удалось создать партию — проверь соединение.'));
+        // 402 games_limit_reached — НЕ обычная ошибка (нет сети и т.п.):
+        // вызывающий код (DiceModeSelect) должен вести на Paywall с
+        // каталогом продуктов из тела ответа, а не показывать это как
+        // session.error инлайном. pendingStartGameIdRef НЕ сбрасывается —
+        // партия не создана и баланс не списан, повторная попытка (после
+        // покупки) должна переиспользовать тот же id.
+        const isPaywall = err instanceof WorkerApiError && err.status === 402 && (err.body as { error?: string } | null)?.error === 'games_limit_reached';
+        if (!isPaywall) {
+          setError(errorMessage(err, 'Не удалось создать партию — проверь соединение.'));
+        }
         throw err;
       } finally {
         setIsBusy(false);
@@ -215,6 +244,7 @@ export function useGameSession() {
     setLastMove(record.lastMove);
     setError(null);
     pendingRollIdRef.current = null;
+    pendingStartGameIdRef.current = null;
   }, []);
 
   const reset = useCallback(() => {
@@ -226,6 +256,7 @@ export function useGameSession() {
     setLastMove(null);
     setError(null);
     pendingRollIdRef.current = null;
+    pendingStartGameIdRef.current = null;
   }, []);
 
   const clearError = useCallback(() => setError(null), []);

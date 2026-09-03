@@ -1,4 +1,5 @@
 import type { DiceMode, GameState, RollEvent } from '../types/game';
+import type { Product, ProductId, Entitlements } from '../types/payments';
 import { getInitData } from '../telegram/telegramAdapter';
 
 // Публичный (не секретный) адрес Worker'а — одинаковый для всех пользователей,
@@ -61,10 +62,18 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-export async function createGameOnServer(request: string, diceMode: DiceMode): Promise<GameState> {
+/**
+ * clientRequestId — идемпотентность создания партии (см. worker/src/index.ts:handleCreateGame,
+ * найдено при бэкенд-ревью п.2/батч 2: без стабильного ключа ретрай после
+ * потерянного ответа списывал бы партию из баланса повторно). Опционален на
+ * уровне HTTP-контракта (сервер сгенерирует сам, если не передан), но
+ * useGameSession.startGame ВСЕГДА передаёт стабильный id — тот же паттерн,
+ * что takeClientEventId для бросков.
+ */
+export async function createGameOnServer(request: string, diceMode: DiceMode, clientRequestId: string): Promise<GameState> {
   const result = await apiFetch<{ game: GameState }>('/api/v1/games', {
     method: 'POST',
-    body: JSON.stringify({ request, diceMode }),
+    body: JSON.stringify({ request, diceMode, clientRequestId }),
   });
   return result.game;
 }
@@ -125,5 +134,56 @@ export async function rollOnServer(
   return apiFetch<RollResult>(`/api/v1/games/${gameId}/rolls`, {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+// ----------------------------------------------------------------------
+// Монетизация (батч 6 — фронтенд к бэкенду батчей 1-5).
+// ----------------------------------------------------------------------
+
+export async function getProductsFromServer(): Promise<Product[]> {
+  const result = await apiFetch<{ products: Product[] }>('/api/v1/products');
+  return result.products;
+}
+
+export async function getEntitlementsFromServer(): Promise<Entitlements> {
+  return apiFetch<Entitlements>('/api/v1/entitlements');
+}
+
+/** Возвращает ссылку на оплату Stars — открывается через
+ * telegramAdapter.openInvoice(), не напрямую (см. usePayments.ts). */
+export async function createInvoiceOnServer(productId: ProductId): Promise<string> {
+  const result = await apiFetch<{ invoiceUrl: string }>('/api/v1/payments/invoice', {
+    method: 'POST',
+    body: JSON.stringify({ productId }),
+  });
+  return result.invoiceUrl;
+}
+
+export interface AiReviewStatus {
+  status: 'none' | 'pending' | 'ready' | 'failed';
+  content?: string | null;
+  error?: string | null;
+}
+
+/** 202 (pending, только что запущена) или 200 (уже была готова — повторный
+ * просмотр, бесплатно, см. §11 ТЗ) — apiFetch не различает эти статусы
+ * отдельно, тело ответа в обоих случаях содержит актуальный AiReviewStatus. */
+export async function startAiReviewOnServer(gameId: string): Promise<AiReviewStatus> {
+  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST' });
+}
+
+export async function getAiReviewFromServer(gameId: string): Promise<AiReviewStatus> {
+  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis`);
+}
+
+/** Единственное чисто клиентское событие аналитики (§26 ТЗ) — момент показа
+ * предложения ИИ-разбора на Summary, у сервера нет собственного сигнала об
+ * этом (см. worker/src/index.ts:handleLogClientEvent — узкий allowlist
+ * ровно на это значение). */
+export async function logClientAnalyticsEvent(event: 'ai_offer_shown'): Promise<void> {
+  await apiFetch('/api/v1/analytics/event', {
+    method: 'POST',
+    body: JSON.stringify({ event }),
   });
 }

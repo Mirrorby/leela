@@ -10,6 +10,8 @@ import { DiceModeSelect } from './DiceModeSelect';
 import { GameHome } from './GameHome';
 import { History } from './History';
 import { Summary } from './Summary';
+import { Paywall } from './Paywall';
+import { YourAccess } from './YourAccess';
 
 // Редизайн (этап 7): DiceRoll, TurnResult, CellCard, TransitionEvent,
 // ExtraRollPrompt, TripleSixReset здесь больше не регистрируются — их флоу
@@ -30,4 +32,6 @@ export const screens: Record<ScreenName, ComponentType<ScreenProps>> = {
   GameHome,
   History,
   Summary,
+  Paywall,
+  YourAccess,
 };
