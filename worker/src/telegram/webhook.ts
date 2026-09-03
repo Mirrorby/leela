@@ -14,6 +14,8 @@ import {
   applySuccessfulPayment,
   markSubscriptionAutoRenewOff,
 } from '../payments/repository';
+import { getProduct } from '../payments/catalog';
+import { logAnalyticsEvent } from '../analytics/repository';
 
 const TELEGRAM_SECRET_HEADER = 'X-Telegram-Bot-Api-Secret-Token';
 const MINI_APP_URL = 'https://mirrorby.github.io/leela/';
@@ -110,18 +112,21 @@ async function handlePreCheckoutQuery(botToken: string, db: D1Database, query: T
   const transaction = await getTransactionById(db, query.invoice_payload);
   if (!transaction) {
     await answerPreCheckoutQuery(botToken, query.id, false, 'Заказ не найден или устарел — попробуйте оформить покупку заново.');
+    await logAnalyticsEvent(db, String(query.from.id), 'payment_failed', { reason: 'transaction_not_found' });
     return;
   }
   if (transaction.status !== 'created') {
     // Уже обработан (успешно/ошибка) или это повторная доставка того же
     // pre_checkout_query — отклоняем, не проваливаемся молча.
     await answerPreCheckoutQuery(botToken, query.id, false, 'Этот заказ уже обработан.');
+    await logAnalyticsEvent(db, transaction.telegram_id, 'payment_failed', { productId: transaction.product_id, reason: 'already_processed' });
     return;
   }
   if (transaction.telegram_id !== String(query.from.id) || transaction.stars_amount !== query.total_amount) {
     // Расхождение суммы/пользователя с тем, что записано при создании
     // инвойса — верный признак подделки или сбоя, а не просто "не найдено".
     await answerPreCheckoutQuery(botToken, query.id, false, 'Данные заказа не совпадают.');
+    await logAnalyticsEvent(db, transaction.telegram_id, 'payment_failed', { productId: transaction.product_id, reason: 'mismatch' });
     return;
   }
   await answerPreCheckoutQuery(botToken, query.id, true);
@@ -160,6 +165,22 @@ async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage)
     isRenewal,
     subscriptionExpirationDateSeconds: payment.subscription_expiration_date,
   });
+
+  // §26 ТЗ: "для событий покупки сохранять тип продукта". Подписка (первая
+  // оплата/продление) и ai_review_1 логируются отдельными событиями вместо
+  // общего payment_success — см. комментарий в index.ts:handleCreateInvoice
+  // про то же разделение на этапе payment_started/ai_payment_started.
+  const product = getProduct(transaction.product_id);
+  const payload = { productId: transaction.product_id, starsAmount: transaction.stars_amount };
+  if (isRenewal) {
+    await logAnalyticsEvent(db, transaction.telegram_id, 'subscription_renewed', payload);
+  } else if (product?.isSubscription) {
+    await logAnalyticsEvent(db, transaction.telegram_id, 'subscription_started', payload);
+  } else if (transaction.product_id === 'ai_review_1') {
+    await logAnalyticsEvent(db, transaction.telegram_id, 'ai_payment_success', payload);
+  } else {
+    await logAnalyticsEvent(db, transaction.telegram_id, 'payment_success', payload);
+  }
 }
 
 /** См. TelegramSubscriptionUpdate выше — единственная неуверенная часть
@@ -167,6 +188,7 @@ async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage)
 async function handleSubscriptionUpdate(db: D1Database, update: TelegramSubscriptionUpdate): Promise<void> {
   if (update.state !== 'canceled' || !update.user) return;
   await markSubscriptionAutoRenewOff(db, String(update.user.id));
+  await logAnalyticsEvent(db, String(update.user.id), 'subscription_cancelled');
 }
 
 async function sendTelegramMessage(

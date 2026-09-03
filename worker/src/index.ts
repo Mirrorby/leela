@@ -5,11 +5,12 @@ import { validateInitData, extractInitData, type ValidatedInitData } from './tel
 import { handleTelegramWebhook } from './telegram/webhook';
 import { insertGame, updateGame, getGameById, getGameByClientRequestId, listGamesByUser, InvalidCursorError } from './games/repository';
 import { listProducts, getProduct } from './payments/catalog';
-import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, chargeForAiReview, refundAiReviewCharge, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
+import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, chargeForAiReview, refundAiReviewCharge, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
 import { createInvoiceLink } from './payments/invoice';
 import { getAiReview, upsertAiReviewPending, markAiReviewReady, markAiReviewFailed } from './ai/reviewRepository';
 import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
+import { logAnalyticsEvent } from './analytics/repository';
 import type { DiceMode, GameState } from './types/game';
 import type { ProductId } from './types/payments';
 
@@ -111,10 +112,16 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
   // Списание — ПЕРЕД созданием партии (после проверки ruleset'а — если его
   // почему-то нет, партия и так не создастся, незачем сначала списывать
   // баланс за партию, которая не будет создана).
+  let chargeSource: 'subscription' | 'free' | 'paid';
   try {
-    await chargeForGame(env.DB, auth.telegramId);
+    const result = await chargeForGame(env.DB, auth.telegramId);
+    chargeSource = result.source;
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
+      // §26 ТЗ, §6 "Основной paywall" — событие привязано именно к этой
+      // точке (создание партии, все три источника исчерпаны), не к
+      // произвольному открытию любого экрана.
+      await logAnalyticsEvent(env.DB, auth.telegramId, 'paywall_opened');
       return json(
         {
           error: 'games_limit_reached',
@@ -132,6 +139,7 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
     }
     throw err;
   }
+  await logAnalyticsEvent(env.DB, auth.telegramId, `${chargeSource}_game_started`);
 
   const game = createNewGame({
     id: crypto.randomUUID(),
@@ -179,8 +187,34 @@ async function handleListProducts(): Promise<Response> {
 }
 
 async function handleGetEntitlements(env: Env, auth: ValidatedInitData): Promise<Response> {
+  // §26 ТЗ (subscription_expired) — см. развёрнутый комментарий у самой
+  // функции: единственная точка во всём API, которую точно дёргает КАЖДЫЙ
+  // клиент на каждое открытие приложения, поэтому переход в "истекла"
+  // обнаруживается быстро, без отдельного Cron Trigger. Не влияет на сам
+  // ответ ниже — только на факт логирования.
+  await trackSubscriptionExpiryIfNeeded(env.DB, auth.telegramId);
   const entitlements = await getEntitlements(env.DB, auth.telegramId);
   return json(entitlements);
+}
+
+/**
+ * §26 ТЗ: единственное событие из списка без серверного сигнала вообще —
+ * ai_offer_shown (момент показа экрана "Получить ИИ-разбор" на Summary,
+ * см. batch 6 фронтенда) — это чистый просмотр UI, ни один API-запрос сам
+ * по себе с ним не совпадает. Остальные 16 событий из §26 логируются на
+ * естественных серверных точках (см. handleCreateGame/handleCreateInvoice/
+ * handleStartAiReview/webhook.ts) без отдельного эндпоинта — специально НЕ
+ * делаю его общим "любое событие с фронта", узкий allowlist на одно
+ * конкретное значение достаточен и не даёт клиенту засорить таблицу
+ * произвольными строками.
+ */
+async function handleLogClientEvent(request: Request, env: Env, auth: ValidatedInitData): Promise<Response> {
+  const body = await readJson<{ event?: unknown }>(request);
+  if (body?.event !== 'ai_offer_shown') {
+    return json({ error: 'invalid_body', detail: 'event must be one of: ai_offer_shown' }, { status: 400 });
+  }
+  await logAnalyticsEvent(env.DB, auth.telegramId, 'ai_offer_shown');
+  return json({ ok: true });
 }
 
 /**
@@ -196,12 +230,32 @@ async function handleCreateInvoice(request: Request, env: Env, auth: ValidatedIn
     return json({ error: 'invalid_body', detail: 'productId is missing or unknown' }, { status: 400 });
   }
 
+  // §26 ТЗ: "для событий покупки сохранять тип продукта" — здесь и во всех
+  // остальных analytics-вызовах в этой функции/вебхуке. product_selected
+  // логируется независимо от того, состоится ли сама покупка (пользователь
+  // мог передумать/платёж не пройти) — это намеренно РАНЬШЕ проверки на
+  // параллельную подписку ниже, чтобы даже отклонённая здесь попытка была
+  // видна в воронке как "продукт выбран".
+  await logAnalyticsEvent(env.DB, auth.telegramId, 'product_selected', { productId: product.id });
+
   if (product.isSubscription && (await hasActiveSubscription(env.DB, auth.telegramId))) {
     return json({ error: 'subscription_already_active', detail: 'У вас уже есть активная подписка.' }, { status: 400 });
   }
 
   const transaction = await createPendingTransaction(env.DB, auth.telegramId, product.id as ProductId);
   const invoiceUrl = await createInvoiceLink(env.BOT_TOKEN, transaction.id, product);
+
+  // ai_review_1 — единственный продукт, у которого в §26 отдельная ветка
+  // событий (ai_payment_started/ai_payment_success) вместо общей
+  // (payment_started/payment_success). game_ai_combo намеренно остаётся в
+  // общей ветке — предлагается как upsell именно на paywall'е партий (§5:
+  // "рекомендуется предлагать... при выборе покупки одной партии"), поэтому
+  // по контексту это "игровая", а не "ИИ" покупка.
+  await logAnalyticsEvent(env.DB, auth.telegramId, product.id === 'ai_review_1' ? 'ai_payment_started' : 'payment_started', {
+    productId: product.id,
+    starsAmount: product.stars,
+  });
+
   return json({ invoiceUrl });
 }
 
@@ -228,9 +282,13 @@ async function generateAndStoreReview(env: Env, game: GameState, telegramId: str
     const prompt = buildReviewPrompt(game);
     const text = await generateReview(env.GEMINI_API_KEY, prompt);
     await markAiReviewReady(env.DB, game.id, text);
+    await logAnalyticsEvent(env.DB, telegramId, 'ai_review_completed', { gameId: game.id });
   } catch (err) {
     await markAiReviewFailed(env.DB, game.id, err instanceof Error ? err.message : String(err));
     await refundAiReviewCharge(env.DB, telegramId, chargedFrom);
+    // §26 ТЗ не содержит отдельного события "ai_review_failed" — список
+    // событий там исчерпывающий (paywall/purchase/game/ai/subscription-воронка),
+    // сбой генерации — техническая ошибка, а не шаг воронки монетизации.
   }
 }
 
@@ -279,6 +337,14 @@ async function handleStartAiReview(env: Env, ctx: ExecutionContext, auth: Valida
   }
 
   await upsertAiReviewPending(env.DB, gameId, auth.telegramId, chargeSource);
+  // §26 ТЗ: free_ai_used — только когда списание реально ушло с бесплатного
+  // счётчика (не при каждом старте разбора); ai_review_started — на КАЖДЫЙ
+  // успешно оплаченный/бесплатный запуск генерации, вне зависимости от
+  // источника списания.
+  if (chargeSource === 'free') {
+    await logAnalyticsEvent(env.DB, auth.telegramId, 'free_ai_used');
+  }
+  await logAnalyticsEvent(env.DB, auth.telegramId, 'ai_review_started', { gameId });
   ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, chargeSource));
 
   return json({ status: 'pending' }, { status: 202 });
@@ -482,6 +548,13 @@ export default {
       if (!isValidatedInitData(auth)) return auth;
       if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
       return handleCreateInvoice(request, env, auth);
+    }
+
+    if (url.pathname === '/api/v1/analytics/event') {
+      const auth = await requireAuth(request, env);
+      if (!isValidatedInitData(auth)) return auth;
+      if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
+      return handleLogClientEvent(request, env, auth);
     }
 
     if (url.pathname === '/telegram/webhook') {

@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { createFakeD1 } from '../testUtils/fakeD1';
-import { getOrCreateUserBalance, getLatestSubscription, getEntitlements, chargeForAiReview, refundAiReviewCharge, InsufficientBalanceError } from './repository';
+import {
+  getOrCreateUserBalance,
+  getLatestSubscription,
+  getEntitlements,
+  chargeForAiReview,
+  refundAiReviewCharge,
+  trackSubscriptionExpiryIfNeeded,
+  InsufficientBalanceError,
+} from './repository';
+import { listAnalyticsEvents } from '../analytics/repository';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from './catalog';
 
 describe('getOrCreateUserBalance', () => {
@@ -147,5 +156,60 @@ describe('chargeForAiReview / refundAiReviewCharge (батч 4)', () => {
     const balance = await getOrCreateUserBalance(db, 'user-1');
     expect(balance.paid_ai_reviews).toBe(1);
     expect(balance.free_ai_reviews_remaining).toBe(FREE_AI_REVIEWS_DEFAULT); // не тронут
+  });
+});
+
+describe('trackSubscriptionExpiryIfNeeded (батч 5, §26 — subscription_expired)', () => {
+  it('нет подписки вообще — ничего не логирует', async () => {
+    const db = createFakeD1();
+    await trackSubscriptionExpiryIfNeeded(db, 'user-1');
+    expect(await listAnalyticsEvents(db, 'user-1')).toHaveLength(0);
+  });
+
+  it('активная подписка (period_end в будущем) — не логирует', async () => {
+    const db = createFakeD1();
+    await db
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', 'user-1', Date.now() + 100000, 1, Date.now(), Date.now())
+      .run();
+    await trackSubscriptionExpiryIfNeeded(db, 'user-1');
+    expect(await listAnalyticsEvents(db, 'user-1')).toHaveLength(0);
+  });
+
+  it('истёкшая подписка — логирует subscription_expired один раз', async () => {
+    const db = createFakeD1();
+    await db
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', 'user-1', Date.now() - 1000, 1, Date.now(), Date.now())
+      .run();
+    await trackSubscriptionExpiryIfNeeded(db, 'user-1');
+    const events = await listAnalyticsEvents(db, 'user-1');
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toBe('subscription_expired');
+  });
+
+  it('повторный вызов для уже залогированной истёкшей подписки — не логирует снова', async () => {
+    const db = createFakeD1();
+    await db
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', 'user-1', Date.now() - 1000, 1, Date.now(), Date.now())
+      .run();
+    await trackSubscriptionExpiryIfNeeded(db, 'user-1');
+    await trackSubscriptionExpiryIfNeeded(db, 'user-1');
+    await trackSubscriptionExpiryIfNeeded(db, 'user-1');
+    expect(await listAnalyticsEvents(db, 'user-1')).toHaveLength(1);
+  });
+
+  it('не влияет на сам расчёт entitlements — истёкшая подписка и так корректно неактивна независимо от флага', async () => {
+    const db = createFakeD1();
+    await db
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', 'user-1', Date.now() - 1000, 1, Date.now(), Date.now())
+      .run();
+    const before = await getEntitlements(db, 'user-1');
+    await trackSubscriptionExpiryIfNeeded(db, 'user-1');
+    const after = await getEntitlements(db, 'user-1');
+    expect(before.subscription?.active).toBe(false);
+    expect(after).toEqual(before);
   });
 });

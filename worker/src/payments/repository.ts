@@ -1,6 +1,7 @@
 import type { Entitlements, ProductId } from '../types/payments';
 import { computeEntitlements } from './entitlements';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT, getProduct } from './catalog';
+import { logAnalyticsEvent } from '../analytics/repository';
 
 export interface UserBalanceRow {
   telegram_id: string;
@@ -18,6 +19,7 @@ export interface SubscriptionRow {
   telegram_id: string;
   period_end: number;
   auto_renew: number;
+  expired_notified_at: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -76,6 +78,33 @@ export async function getLatestSubscription(db: D1Database, telegramId: string):
 export async function getEntitlements(db: D1Database, telegramId: string): Promise<Entitlements> {
   const [balance, subscription] = await Promise.all([getOrCreateUserBalance(db, telegramId), getLatestSubscription(db, telegramId)]);
   return computeEntitlements(balance, subscription, Date.now());
+}
+
+/**
+ * §26 ТЗ, событие subscription_expired — см. развёрнутый комментарий в
+ * 0012_add_subscription_expired_notified.sql про то, почему у этого
+ * события нет естественной точки вызова. Дёргается из
+ * GET /api/v1/entitlements (index.ts) — не влияет на возвращаемые
+ * entitlements (computeEntitlements и так корректно считает истёкшую
+ * подписку неактивной независимо от этого флага), только логирует факт
+ * первого обнаружения истечения.
+ */
+export async function trackSubscriptionExpiryIfNeeded(db: D1Database, telegramId: string): Promise<void> {
+  const subscription = await getLatestSubscription(db, telegramId);
+  if (!subscription) return;
+  if (subscription.period_end > Date.now()) return; // ещё активна
+  if (subscription.expired_notified_at != null) return; // уже залогировано
+
+  const result = await db
+    .prepare('UPDATE subscriptions SET expired_notified_at = ? WHERE id = ? AND expired_notified_at IS NULL')
+    .bind(Date.now(), subscription.id)
+    .run();
+  if ((result.meta?.changes ?? 0) > 0) {
+    // Условие в WHERE выше — защита от гонки (два параллельных запроса
+    // одновременно видят expired_notified_at IS NULL): UPDATE выигрывает
+    // только у одного из них, только он логирует.
+    await logAnalyticsEvent(db, telegramId, 'subscription_expired');
+  }
 }
 
 export type GameChargeSource = 'subscription' | 'free' | 'paid';

@@ -3,6 +3,7 @@ import worker, { type Env } from './index';
 import { createFakeD1 } from './testUtils/fakeD1';
 import { buildSignedInitData, freshAuthDate, TEST_BOT_TOKEN } from './testUtils/signInitData';
 import { getOrCreateUserBalance } from './payments/repository';
+import { listAnalyticsEvents } from './analytics/repository';
 
 function makeEnv(): Env {
   return { DB: createFakeD1(), BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'test-webhook-secret', GEMINI_API_KEY: 'test-gemini-key' };
@@ -1259,5 +1260,185 @@ describe('монетизация (батч 4) — ИИ-разбор партии
       fakeCtx
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe('монетизация (батч 5) — аналитика §26', () => {
+  let env: Env;
+
+  beforeEach(() => {
+    env = makeEnv();
+    vi.restoreAllMocks();
+    pendingWaitUntil.length = 0;
+  });
+
+  it('games_limit_reached — логирует paywall_opened', async () => {
+    const auth = await authHeaderFor(50001);
+    for (let i = 0; i < 2; i++) {
+      await worker.fetch(
+        req('/api/v1/games', {
+          method: 'POST',
+          headers: { Authorization: auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+        }),
+        env,
+        fakeCtx
+      );
+    }
+    await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const events = await listAnalyticsEvents(env.DB, String(50001));
+    expect(events.map((e) => e.event)).toContain('paywall_opened');
+  });
+
+  it('успешная бесплатная партия — логирует free_game_started', async () => {
+    const auth = await authHeaderFor(50002);
+    await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const events = await listAnalyticsEvents(env.DB, String(50002));
+    expect(events.map((e) => e.event)).toEqual(['free_game_started']);
+  });
+
+  it('платная партия (free исчерпан) — логирует paid_game_started, не free_game_started', async () => {
+    const auth = await authHeaderFor(50003);
+    await grantUnlimitedGamesForTest(env, 50003);
+    await env.DB.prepare('UPDATE user_balances SET free_games_remaining = 0 WHERE telegram_id = ?').bind(String(50003)).run();
+    await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const events = await listAnalyticsEvents(env.DB, String(50003));
+    expect(events.map((e) => e.event)).toEqual(['paid_game_started']);
+  });
+
+  it('партия по активной подписке — логирует subscription_game_started', async () => {
+    const auth = await authHeaderFor(50004);
+    const telegramId = String(50004);
+    await getOrCreateUserBalance(env.DB, telegramId);
+    await env.DB
+      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind('sub-1', telegramId, Date.now() + 100000, 1, Date.now(), Date.now())
+      .run();
+    await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const events = await listAnalyticsEvents(env.DB, telegramId);
+    expect(events.map((e) => e.event)).toEqual(['subscription_game_started']);
+  });
+
+  it('POST /payments/invoice — логирует product_selected и payment_started с productId', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, result: 'https://t.me/x' }), { status: 200 }));
+    const auth = await authHeaderFor(50005);
+    await worker.fetch(
+      req('/api/v1/payments/invoice', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: 'game_5' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const events = await listAnalyticsEvents(env.DB, String(50005));
+    expect(events.map((e) => e.event)).toEqual(['product_selected', 'payment_started']);
+    expect(JSON.parse(events[1].payload!)).toMatchObject({ productId: 'game_5', starsAmount: 299 });
+  });
+
+  it('POST /payments/invoice с ai_review_1 — логирует ai_payment_started, а не общий payment_started', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, result: 'https://t.me/x' }), { status: 200 }));
+    const auth = await authHeaderFor(50006);
+    await worker.fetch(
+      req('/api/v1/payments/invoice', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: 'ai_review_1' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const events = await listAnalyticsEvents(env.DB, String(50006));
+    expect(events.map((e) => e.event)).toEqual(['product_selected', 'ai_payment_started']);
+  });
+
+  it('успешный бесплатный ИИ-разбор — логирует free_ai_used, ai_review_started, ai_review_completed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Разбор' }] } }] }), { status: 200 })
+    );
+    const auth = await authHeaderFor(50007);
+    await grantUnlimitedGamesForTest(env, 50007);
+    const createRes = await worker.fetch(
+      req('/api/v1/games', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: 'test', diceMode: 'physical' }),
+      }),
+      env,
+      fakeCtx
+    );
+    const created = await readJson(createRes);
+    await env.DB.prepare("UPDATE games SET status = 'FINISHED' WHERE id = ?").bind(created.game.id).run();
+
+    await worker.fetch(req(`/api/v1/games/${created.game.id}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx);
+    await flushWaitUntil();
+
+    const events = (await listAnalyticsEvents(env.DB, String(50007))).map((e) => e.event);
+    expect(events).toContain('free_ai_used');
+    expect(events).toContain('ai_review_started');
+    expect(events).toContain('ai_review_completed');
+  });
+
+  it('POST /api/v1/analytics/event с ai_offer_shown — записывает событие', async () => {
+    const auth = await authHeaderFor(50008);
+    const res = await worker.fetch(
+      req('/api/v1/analytics/event', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'ai_offer_shown' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(200);
+    const events = await listAnalyticsEvents(env.DB, String(50008));
+    expect(events.map((e) => e.event)).toEqual(['ai_offer_shown']);
+  });
+
+  it('POST /api/v1/analytics/event с посторонним значением — 400, не пишет в таблицу', async () => {
+    const auth = await authHeaderFor(50009);
+    const res = await worker.fetch(
+      req('/api/v1/analytics/event', {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'какое-то произвольное значение с фронта' }),
+      }),
+      env,
+      fakeCtx
+    );
+    expect(res.status).toBe(400);
+    expect(await listAnalyticsEvents(env.DB, String(50009))).toHaveLength(0);
   });
 });
