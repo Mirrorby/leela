@@ -23,6 +23,8 @@ export function createFakeD1(): D1Database {
   // aiReviewRows (батч 4) — см. ai/reviewRepository.ts:AiReviewRow.
   // game_id уникален (PRIMARY KEY, эмулирует ON CONFLICT(game_id) DO UPDATE).
   const aiReviewRows: Array<Record<string, unknown>> = [];
+  // analyticsEventRows (батч 5) — см. analytics/repository.ts.
+  const analyticsEventRows: Array<Record<string, unknown>> = [];
 
   function prepare(query: string) {
     let bound: unknown[] = [];
@@ -113,9 +115,22 @@ export function createFakeD1(): D1Database {
             .slice(0, limit);
           return { results: results as T[], success: true, meta: {} as never };
         }
+        if (normalized.startsWith('SELECT * FROM analytics_events WHERE telegram_id = ?')) {
+          // Тестовый доступ (index.test.ts/analytics/repository.test.ts) —
+          // порядок по created_at ASC, как записывались, для предсказуемости
+          // assertions по порядку событий воронки.
+          const [telegramId] = bound as [string];
+          const results = analyticsEventRows.filter((r) => r.telegram_id === telegramId).sort((a, b) => (a.created_at as number) - (b.created_at as number));
+          return { results: results as T[], success: true, meta: {} as never };
+        }
         return { results: [], success: true, meta: {} as never };
       },
       async run(): Promise<D1Result> {
+        if (normalized.startsWith('INSERT INTO analytics_events')) {
+          const [id, telegram_id, event, payload, created_at] = bound as [string, string, string, string | null, number];
+          analyticsEventRows.push({ id, telegram_id, event, payload, created_at });
+          return { results: [], success: true, meta: {} as never };
+        }
         if (normalized.startsWith('UPDATE user_balances SET free_games_remaining = free_games_remaining - 1')) {
           // Батч 2: списание бесплатной партии. WHERE проверяет version И
           // free_games_remaining > 0 ОДНИМ условием — эмулируем так же: любое
@@ -313,8 +328,21 @@ export function createFakeD1(): D1Database {
             number,
             number,
           ];
-          subscriptionRows.push({ id, telegram_id, period_end, auto_renew, created_at, updated_at });
+          subscriptionRows.push({ id, telegram_id, period_end, auto_renew, expired_notified_at: null, created_at, updated_at });
           return { results: [], success: true, meta: {} as never };
+        }
+        if (normalized.startsWith('UPDATE subscriptions SET expired_notified_at = ? WHERE id = ? AND expired_notified_at IS NULL')) {
+          // trackSubscriptionExpiryIfNeeded (§26 ТЗ, subscription_expired) —
+          // WHERE ... IS NULL здесь и есть сама защита от повторного
+          // логирования, эмулируем её честно (не находим строку, если флаг
+          // уже проставлен, а не просто "обновляем всегда").
+          const [expiredNotifiedAt, id] = bound as [number, string];
+          const row = subscriptionRows.find((r) => r.id === id && r.expired_notified_at == null);
+          if (row) {
+            row.expired_notified_at = expiredNotifiedAt;
+            return { results: [], success: true, meta: { changes: 1 } as never };
+          }
+          return { results: [], success: true, meta: { changes: 0 } as never };
         }
         if (normalized.startsWith('UPDATE subscriptions SET period_end = ?, updated_at = ? WHERE id = ?')) {
           // Продление подписки (applySuccessfulPayment, isRenewal=true).
