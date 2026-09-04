@@ -740,10 +740,16 @@ button.icon-button {
 }
 
 .ai-review-section {
+  /* Найденный баг (ревью по скриншоту): align-items: flex-start сжимал
+     кнопку "Получить ИИ-разбор"/"Купить разбор" по ширине текста и прижимал
+     её влево — асимметрично на фоне остальных кнопок экрана (например,
+     "Начать заново" ниже), которые растянуты на всю ширину за счёт
+     дефолтного stretch у родительского .screen. Убрано — карточка с текстом
+     разбора (.ai-review-content) и так корректно смотрится на всю ширину,
+     тот же паттерн, что у .access-summary и .game-list-item. */
   display: flex;
   flex-direction: column;
   gap: 10px;
-  align-items: flex-start;
 }
 
 .ai-review-content {
