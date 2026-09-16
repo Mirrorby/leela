@@ -759,3 +759,50 @@ button.icon-button {
   background: var(--pill-bg);
   white-space: pre-wrap;
 }
+
+/* --- HowToPlay (обучающий онбординг перед первой партией) --- */
+
+.howtoplay-emoji {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.howtoplay-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.howtoplay-dot {
+  /* Переопределяем .screen button целиком — это не кнопка-таблетка с
+     текстом, а маленькая точка-индикатор шага, у неё своя геометрия. */
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border-radius: 999px;
+  border: none;
+  background: var(--pill-border);
+  opacity: 1;
+}
+
+.howtoplay-dot.active {
+  background: var(--gold-button);
+  width: 20px;
+}
+
+.howtoplay-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.howtoplay-actions button {
+  flex: 1;
+}
+
+.howtoplay-skip {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+  opacity: 0.75;
+  padding: 8px 14px;
+}

@@ -6,10 +6,13 @@
 //   leela:v1:game:<id>   — JSON-запись одной партии (форму задаёт вызывающий код)
 //   leela:v1:index       — JSON-массив id всех сохранённых партий
 //   leela:v1:activeGameId — id партии, которую нужно восстановить при загрузке
+//   leela:v1:onboardingSeen — '1', если обучающий онбординг (HowToPlay) уже
+//                             показывался этому пользователю хотя бы раз
 
 const STORAGE_PREFIX = 'leela:v1:';
 const INDEX_KEY = `${STORAGE_PREFIX}index`;
 const ACTIVE_GAME_KEY = `${STORAGE_PREFIX}activeGameId`;
+const ONBOARDING_SEEN_KEY = `${STORAGE_PREFIX}onboardingSeen`;
 
 function gameKey(id: string): string {
   return `${STORAGE_PREFIX}game:${id}`;
@@ -172,5 +175,30 @@ export function hideGameId(id: string): void {
     window.localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify([...current, id]));
   } catch {
     // ignore — квота переполнена и на этот маленький список, не критично.
+  }
+}
+
+/**
+ * Онбординг (HowToPlay) должен один раз показаться автоматически перед
+ * самой первой партией пользователя и больше не навязываться — дальше он
+ * доступен только по кнопке «Как играть» на Intro. isStorageAvailable()
+ * недоступен (приватный режим и т.п.) — считаем, что онбординг ещё не
+ * видели: он просто покажется снова при следующем визите, ничего не ломает.
+ */
+export function getOnboardingSeen(): boolean {
+  if (!isStorageAvailable()) return false;
+  try {
+    return window.localStorage.getItem(ONBOARDING_SEEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setOnboardingSeen(): void {
+  if (!isStorageAvailable()) return;
+  try {
+    window.localStorage.setItem(ONBOARDING_SEEN_KEY, '1');
+  } catch {
+    // ignore — некритично, просто покажется ещё раз при следующем визите.
   }
 }

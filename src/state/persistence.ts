@@ -10,6 +10,8 @@ import {
   setActiveGameId,
   getHiddenGameIds,
   hideGameId,
+  getOnboardingSeen,
+  setOnboardingSeen,
 } from '../storage/localStorage';
 
 /**
@@ -61,4 +63,13 @@ export function getHiddenPersistedGameIds(): string[] {
 
 export function hidePersistedGame(id: string): void {
   hideGameId(id);
+}
+
+/** См. storage/localStorage.ts:getOnboardingSeen/setOnboardingSeen. */
+export function hasSeenOnboarding(): boolean {
+  return getOnboardingSeen();
+}
+
+export function markOnboardingSeen(): void {
+  setOnboardingSeen();
 }
