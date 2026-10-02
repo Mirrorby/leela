@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import worker, { type Env } from '../index';
-import { handleTributeWebhook, type TributeEnv } from './tribute';
+import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './tribute';
+import { listProducts } from './catalog';
 import { getEntitlements } from './repository';
 
 // Real SQLite runs the production SQL, including constraints and rollback.
@@ -70,6 +71,29 @@ describe('Tribute payments', () => {
 
   const send = async (name = 'new_digital_product', fields: Record<string, unknown> = {}) =>
     handleTributeWebhook(await signedRequest(name, fields), env);
+
+  it('publishes checkout URLs and prices from the webhook mappings without exposing the key or changing grants', () => {
+    env.TRIBUTE_PRODUCTS = JSON.stringify({
+      161238: { productId: 'game_1', amount: 159, currency: 'USD' },
+      161251: { productId: 'game_5', amount: 599, currency: 'USD' },
+      161252: { productId: 'ai_review_1', amount: 199, currency: 'USD' },
+      161253: { productId: 'game_ai_combo', amount: 299, currency: 'USD' },
+    });
+    const products = listProductsWithTribute(env);
+    for (const [id, code, amount] of [
+      ['game_1', 'FWC', 159], ['game_5', 'FWP', 599], ['ai_review_1', 'FWQ', 199], ['game_ai_combo', 'FWR', 299],
+    ] as const) {
+      expect(products.find((product) => product.id === id)?.tribute).toEqual({ url: `https://web.tribute.tg/p/${code}`, amount, currency: 'USD' });
+    }
+    expect(products.find((product) => product.id === 'subscription_unlimited')?.tribute).toBeUndefined();
+    expect(products.map(({ tribute: _tribute, ...product }) => product)).toEqual(listProducts());
+    expect(listProducts().every((product) => !product.tribute)).toBe(true);
+    expect(JSON.stringify(products)).not.toContain(secret);
+    env.TRIBUTE_PRODUCTS = '{}';
+    expect(listProductsWithTribute(env)).toEqual(listProducts());
+    delete env.TRIBUTE_API_KEY;
+    expect(listProductsWithTribute(env)).toEqual(listProducts());
+  });
 
   it('routes signed payment through the Worker and credits the existing entitlements', async () => {
     const res = await worker.fetch(await signedRequest(), { ...env, BOT_TOKEN: '', WEBHOOK_SECRET: '', GEMINI_API_KEY: '' } as Env, {} as ExecutionContext);

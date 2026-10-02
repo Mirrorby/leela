@@ -98,7 +98,8 @@
 
 /* --- Кнопки-таблетки (pill), как в референсе --- */
 
-.screen button {
+.screen button,
+.screen .purchase-link {
   font: inherit;
   font-weight: 600;
   padding: 14px 20px;
@@ -123,11 +124,27 @@
   backdrop-filter: blur(6px);
 }
 
-.screen button:hover {
+.screen .purchase-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+.tribute-payment-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.screen button:hover,
+.screen .purchase-link:hover {
   background: var(--pill-bg-hover);
 }
 
-.screen button:disabled {
+.screen button:disabled,
+.screen .purchase-link[aria-disabled="true"] {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -136,13 +153,15 @@
    ярче остальных, залита золотом, а не прозрачным стеклом. --gold-button,
    не --gold-soft (см. index.css) — та же самая "приглушённая под текст"
    версия золота смотрелась грязной в качестве сплошной заливки. */
-.screen button.primary {
+.screen button.primary,
+.screen .purchase-link.primary {
   background: var(--gold-button);
   color: var(--accent-fg);
   border-color: transparent;
 }
 
-.screen button.primary:hover {
+.screen button.primary:hover,
+.screen .purchase-link.primary:hover {
   background: var(--gold-button-hover);
 }
 
@@ -235,7 +254,8 @@
   gap: 8px;
 }
 
-.game-list-actions button {
+.game-list-actions button,
+.game-list-actions .purchase-link {
   /* flex: 1 — обе кнопки делят строку строго пополам и своими внешними
      краями совпадают с левым/правым краем текста над ними (оба ограничены
      одним и тем же padding родителя) — никакой отдельной логики
