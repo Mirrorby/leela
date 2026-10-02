@@ -12,8 +12,11 @@ database_id = "33e79106-5d2e-46ae-b666-0b6d22bf33fe"
 [vars]
 ENVIRONMENT = "production"
 # Лила — 1 партия: https://web.tribute.tg/p/FWC, $1.59 (159 cents).
+# Лила — 5 партий: https://web.tribute.tg/p/FWP, $5.99 (599 cents).
+# Лила — ИИ-разбор: https://web.tribute.tg/p/FWQ, $1.99 (199 cents).
+# Лила — партия + ИИ-разбор: https://web.tribute.tg/p/FWR, $2.99 (299 cents).
 # TRIBUTE_API_KEY remains an encrypted Worker Secret.
-TRIBUTE_PRODUCTS = '{"161238":{"productId":"game_1","amount":159,"currency":"USD"}}'
+TRIBUTE_PRODUCTS = '{"161238":{"productId":"game_1","amount":159,"currency":"USD"},"161251":{"productId":"game_5","amount":599,"currency":"USD"},"161252":{"productId":"ai_review_1","amount":199,"currency":"USD"},"161253":{"productId":"game_ai_combo","amount":299,"currency":"USD"}}'
 
 # Секреты (BOT_TOKEN, WEBHOOK_SECRET) сюда НЕ пишем — они добавляются
 # отдельно через Cloudflare Dashboard → Workers & Pages → leela-worker →
