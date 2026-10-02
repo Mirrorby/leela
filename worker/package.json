@@ -9,9 +9,10 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "wrangler": "^3.78.0",
-    "typescript": "^5.5.4",
     "@cloudflare/workers-types": "^4.20240925.0",
-    "vitest": "^4.1.10"
+    "@types/node": "^22.20.5",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.10",
+    "wrangler": "^3.78.0"
   }
 }

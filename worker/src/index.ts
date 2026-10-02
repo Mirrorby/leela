@@ -7,6 +7,7 @@ import { insertGame, updateGame, getGameById, getGameByClientRequestId, listGame
 import { listProducts, getProduct } from './payments/catalog';
 import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, chargeForAiReview, refundAiReviewCharge, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
 import { createInvoiceLink } from './payments/invoice';
+import { handleTributeWebhook, type TributeEnv } from './payments/tribute';
 import { getAiReview, upsertAiReviewPending, markAiReviewReady, markAiReviewFailed } from './ai/reviewRepository';
 import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
@@ -14,7 +15,7 @@ import { logAnalyticsEvent } from './analytics/repository';
 import type { DiceMode, GameState } from './types/game';
 import type { ProductId } from './types/payments';
 
-export interface Env {
+export interface Env extends TributeEnv {
   DB: D1Database;
   // Секреты, добавляются через Cloudflare Dashboard (не в этом файле):
   BOT_TOKEN: string;
@@ -562,6 +563,10 @@ export default {
         return json({ error: 'method_not_allowed' }, { status: 405 });
       }
       return handleTelegramWebhook(request, env.BOT_TOKEN, env.WEBHOOK_SECRET, env.DB);
+    }
+
+    if (url.pathname === '/tribute/webhook') {
+      return handleTributeWebhook(request, env);
     }
 
     return json({ error: 'not_found' }, { status: 404 });
