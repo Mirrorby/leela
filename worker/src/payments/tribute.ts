@@ -179,6 +179,11 @@ function refundStatements(db: D1Database, purchase: Purchase, now: number): D1Pr
 
 export async function handleTributeWebhook(request: Request, env: TributeEnv): Promise<Response> {
   const reply = (data: unknown, status = 200) => Response.json(data, { status });
+  const reject = (error: string, status: number, stage: string) => {
+    // Only fixed diagnostic labels: never log the body, customer IDs or key.
+    console.warn('Tribute webhook rejected', { error, status, stage });
+    return reply({ error }, status);
+  };
   if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } });
   if (!env.TRIBUTE_API_KEY || !env.TRIBUTE_PRODUCTS) return reply({ error: 'tribute_not_configured' }, 503);
   try {
@@ -186,24 +191,32 @@ export async function handleTributeWebhook(request: Request, env: TributeEnv): P
     if (!body) return reply({ error: 'body_too_large' }, 413);
     if (!await validSignature(body, request.headers.get('trbt-signature'), env.TRIBUTE_API_KEY)) return reply({ error: 'invalid_signature' }, 401);
     let event: unknown;
-    try { event = JSON.parse(new TextDecoder().decode(body)); } catch { return reply({ error: 'invalid_json' }, 400); }
-    if (!record(event) || typeof event.name !== 'string') return reply({ error: 'invalid_event' }, 400);
-    if (!['new_digital_product', 'digital_product_refunded'].includes(event.name)) return reply({ status: 'ignored' });
-    if (!record(event.payload) || !positiveInteger(event.payload.product_id) || !positiveInteger(event.payload.purchase_id)) {
-      return reply({ error: 'invalid_purchase' }, 400);
+    try { event = JSON.parse(new TextDecoder().decode(body)); } catch { return reject('invalid_json', 400, 'json'); }
+    if (!record(event)) return reject('invalid_event', 400, 'envelope');
+    // A signed connectivity probe or unrelated event cannot grant access.
+    if (typeof event.name !== 'string' || !['new_digital_product', 'digital_product_refunded'].includes(event.name)) {
+      return reply({ status: 'ignored' });
     }
-    const row = await findPurchase(env.DB, event.payload.purchase_id);
+    if (!record(event.payload) || !positiveInteger(event.payload.product_id)) {
+      return reject('invalid_purchase', 400, 'product_id');
+    }
     // Saved purchases remain refundable even after their mapping is removed.
     const mapping = parseMappings(env.TRIBUTE_PRODUCTS).get(event.payload.product_id);
+    const row = positiveInteger(event.payload.purchase_id)
+      ? await findPurchase(env.DB, event.payload.purchase_id)
+      : null;
+    // Inspect purchase fields only for products we handle. Legacy samples for
+    // unrelated products may omit purchase_id and must not block URL setup.
     if (!row && !mapping) return reply({ status: 'ignored', reason: 'unmapped_product' });
+    if (!positiveInteger(event.payload.purchase_id)) return reject('invalid_purchase', 400, 'purchase_id');
     // Refund payloads may omit the optional Telegram ID. A saved purchase is
     // already authoritative; never infer the identity for a new purchase.
     const fields = event.name === 'digital_product_refunded' && row && event.payload.telegram_user_id == null
       ? { ...event.payload, telegram_user_id: Number(row.telegram_id) }
       : event.payload;
-    if (!positiveInteger(fields.telegram_user_id)) return reply({ error: 'telegram_account_required' }, 422);
+    if (!positiveInteger(fields.telegram_user_id)) return reject('telegram_account_required', 422, 'telegram_user_id');
     const purchase = parsePurchase(fields);
-    if (!purchase) return reply({ error: 'invalid_purchase' }, 400);
+    if (!purchase) return reject('invalid_purchase', 400, 'purchase_fields');
     if (row && !matches(row, purchase)) return reply({ error: 'purchase_mismatch' }, 409);
     if (row && (row.status === 'refunded' || (row.status === 'successful' && event.name === 'new_digital_product'))) {
       return reply({ status: 'ok', duplicate: true });

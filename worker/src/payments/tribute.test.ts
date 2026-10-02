@@ -126,7 +126,32 @@ describe('Tribute payments', () => {
   });
 
   it('does not silently accept old webhook samples without a purchase ID', async () => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect((await send('new_digital_product', { purchase_id: undefined })).status).toBe(400);
+    expect(log).toHaveBeenCalledWith('Tribute webhook rejected', { error: 'invalid_purchase', status: 400, stage: 'purchase_id' });
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM tribute_purchases').get()?.count).toBe(0);
+  });
+
+  it('acknowledges signed connectivity envelopes without treating them as purchases', async () => {
+    for (const raw of ['{}', '{"test":true}', '{"name":"test"}']) {
+      expect(await (await handleTributeWebhook(await signedRequest(undefined, {}, raw), env)).json()).toEqual({ status: 'ignored' });
+    }
+    const unsigned = new Request('https://example/tribute/webhook', { method: 'POST', body: '{"test":true}' });
+    expect((await handleTributeWebhook(unsigned, env)).status).toBe(401);
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM tribute_purchases').get()?.count).toBe(0);
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM user_balances').get()?.count).toBe(0);
+  });
+
+  it('ignores the legacy documentation sample for an unrelated product without touching D1', async () => {
+    const prepare = vi.spyOn(env.DB, 'prepare');
+    // Tribute integration guide sample lacks purchase_id and transaction_id.
+    const raw = JSON.stringify({ name: 'new_digital_product', payload: {
+      product_id: 456, amount: 500, currency: 'usd', user_id: 31326, telegram_user_id: 12321321,
+    } });
+    expect(await (await handleTributeWebhook(await signedRequest(undefined, {}, raw), env)).json())
+      .toEqual({ status: 'ignored', reason: 'unmapped_product' });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM tribute_purchases').get()?.count).toBe(0);
   });
 
   it('ignores unrelated products and subscription/donation events', async () => {
