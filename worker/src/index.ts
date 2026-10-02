@@ -4,10 +4,10 @@ import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
 import { insertGame, updateGame, getGameById, getGameByClientRequestId, listGamesByUser, InvalidCursorError } from './games/repository';
-import { listProducts, getProduct } from './payments/catalog';
+import { getProduct } from './payments/catalog';
 import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, chargeForAiReview, refundAiReviewCharge, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
 import { createInvoiceLink } from './payments/invoice';
-import { handleTributeWebhook, type TributeEnv } from './payments/tribute';
+import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './payments/tribute';
 import { getAiReview, upsertAiReviewPending, markAiReviewReady, markAiReviewFailed } from './ai/reviewRepository';
 import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
@@ -127,7 +127,7 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
         {
           error: 'games_limit_reached',
           detail: 'Бесплатные и купленные партии закончились.',
-          products: listProducts().filter((p) => p.grant.games > 0 || p.isSubscription),
+          products: listProductsWithTribute(env).filter((p) => p.grant.games > 0 || p.isSubscription),
         },
         { status: 402 }
       );
@@ -183,8 +183,8 @@ async function handleGetGame(env: Env, auth: ValidatedInitData, gameId: string):
 // Монетизация, батч 1 (см. worker/migrations/0006..0010 и payments/):
 // только каталог и чтение текущего баланса/подписки. Списание при создании
 // партии/ИИ-разбора, вебхук покупок — следующие батчи.
-async function handleListProducts(): Promise<Response> {
-  return json({ products: listProducts() });
+async function handleListProducts(env: Env): Promise<Response> {
+  return json({ products: listProductsWithTribute(env) });
 }
 
 async function handleGetEntitlements(env: Env, auth: ValidatedInitData): Promise<Response> {
@@ -326,7 +326,7 @@ async function handleStartAiReview(env: Env, ctx: ExecutionContext, auth: Valida
         {
           error: 'analysis_locked',
           detail: 'Бесплатный и купленные ИИ-разборы закончились.',
-          products: listProducts().filter((p) => p.grant.aiReviews > 0),
+          products: listProductsWithTribute(env).filter((p) => p.grant.aiReviews > 0),
         },
         { status: 402 }
       );
@@ -534,7 +534,7 @@ export default {
       const auth = await requireAuth(request, env);
       if (!isValidatedInitData(auth)) return auth;
       if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
-      return handleListProducts();
+      return handleListProducts(env);
     }
 
     if (url.pathname === '/api/v1/entitlements') {

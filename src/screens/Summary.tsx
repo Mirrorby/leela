@@ -4,6 +4,7 @@ import { setActivePersistedGameId } from '../state/persistence';
 import { MoveTile } from '../components/MoveTile';
 import { getAiReviewFromServer, startAiReviewOnServer, logClientAnalyticsEvent, WorkerApiError } from '../api/workerClient';
 import { usePayments } from '../state/usePayments';
+import { formatProductPrice, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
 
 type AiState = 'checking' | 'none' | 'pending' | 'ready' | 'failed' | 'locked';
 
@@ -72,6 +73,10 @@ export function Summary({ session, nav }: ScreenProps) {
   }, [aiState]);
 
   useEffect(() => {
+    if (aiState === 'locked') void payments.refresh();
+  }, [aiState, payments.refresh]);
+
+  useEffect(() => {
     if (aiState !== 'pending' || !game) return;
     pollTimerRef.current = setInterval(() => {
       getAiReviewFromServer(game.id)
@@ -96,6 +101,7 @@ export function Summary({ session, nav }: ScreenProps) {
   }, [aiState, game]);
 
   if (!game) return null;
+  const reviewProduct = payments.products.find((product) => product.id === 'ai_review_1');
 
   const handleGetReview = async () => {
     setAiState('pending');
@@ -159,10 +165,16 @@ export function Summary({ session, nav }: ScreenProps) {
 
         {aiState === 'locked' && (
           <>
-            <p className="muted">Бесплатный и купленные разборы закончились.</p>
-            <button className="primary" onClick={handleBuyReview} disabled={buyingReview}>
-              {buyingReview ? 'Открываем оплату…' : 'Купить разбор — 99 ⭐'}
-            </button>
+            <p className="muted">{payments.entitlements?.canStartAiReview ? 'Разбор доступен на вашем балансе.' : 'Бесплатный и купленные разборы закончились.'}</p>
+            {payments.entitlements?.canStartAiReview ? (
+              <button className="primary" onClick={handleGetReview}>Получить ИИ-разбор</button>
+            ) : reviewProduct ? (
+              <ProductPurchaseButton product={reviewProduct} onBuyStars={() => { void handleBuyReview(); }} disabled={buyingReview}
+                label={buyingReview ? 'Открываем оплату…' : `Купить разбор — ${formatProductPrice(reviewProduct)}`} />
+            ) : <button onClick={() => { void payments.refresh(); }} disabled={payments.loading}>
+              {payments.loading ? 'Загружаем цену…' : 'Загрузить варианты оплаты'}
+            </button>}
+            {reviewProduct?.tribute && <TributePaymentNotice loading={payments.loading} onRefresh={() => { void payments.refresh(); }} />}
           </>
         )}
 

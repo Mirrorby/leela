@@ -20,6 +20,8 @@ export interface Product {
   stars: number;
   grant: ProductGrant;
   isSubscription: boolean;
+  /** Public checkout details; amount is in minor currency units. */
+  tribute?: { url: string; amount: number; currency: string };
 }
 
 export interface SubscriptionEntitlement {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { usePayments } from '../state/usePayments';
 import type { ProductId } from '../types/payments';
+import { formatProductPrice, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
 
 function formatDate(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -71,16 +72,17 @@ export function YourAccess({ nav }: ScreenProps) {
             <li key={product.id} className="game-list-item">
               <div>
                 <strong>{product.title}</strong>
-                <div className="muted">{product.stars} ⭐</div>
+                <div className="muted">{formatProductPrice(product)}</div>
               </div>
               <div className="game-list-actions">
-                <button className="primary" onClick={() => handleBuy(product.id)} disabled={buyingId !== null}>
-                  {buyingId === product.id ? 'Открываем оплату…' : 'Купить'}
-                </button>
+                <ProductPurchaseButton product={product} onBuyStars={() => { void handleBuy(product.id); }} disabled={buyingId !== null}
+                  label={buyingId === product.id ? 'Открываем оплату…' : 'Купить'} />
               </div>
             </li>
           ))}
       </ul>
+
+      {payments.products.some((product) => product.tribute) && <TributePaymentNotice loading={payments.loading} onRefresh={() => { void payments.refresh(); }} />}
 
       <button onClick={() => nav.pop()}>Назад</button>
     </div>

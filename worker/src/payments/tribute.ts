@@ -1,4 +1,4 @@
-import { FREE_AI_REVIEWS_DEFAULT, FREE_GAMES_DEFAULT, getProduct } from './catalog';
+import { FREE_AI_REVIEWS_DEFAULT, FREE_GAMES_DEFAULT, getProduct, listProducts } from './catalog';
 import type { Product } from '../types/payments';
 
 export interface TributeEnv {
@@ -56,6 +56,29 @@ function parseMappings(raw: string): Map<number, Mapping> {
     mappings.set(Number(id), { product, amount: value.amount, currency });
   }
   return mappings;
+}
+
+/** The UI uses the same price and product mapping as webhook verification. */
+export function listProductsWithTribute(env: TributeEnv): Product[] {
+  const products = listProducts();
+  if (!env.TRIBUTE_API_KEY || !env.TRIBUTE_PRODUCTS) return products;
+  const offers = new Map<string, NonNullable<Product['tribute']>>();
+  for (const [id, mapping] of parseMappings(env.TRIBUTE_PRODUCTS)) {
+    // Tribute's public product links use this base-62 alphabet (FWC = 161238).
+    const alphabet = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let remaining = id;
+    let code = '';
+    do {
+      code = alphabet[remaining % 62] + code;
+      remaining = Math.floor(remaining / 62);
+    } while (remaining > 0);
+    offers.set(mapping.product.id, {
+      url: `https://web.tribute.tg/p/${code}`,
+      amount: mapping.amount,
+      currency: mapping.currency,
+    });
+  }
+  return products.map((product) => offers.has(product.id) ? { ...product, tribute: offers.get(product.id)! } : product);
 }
 
 async function readBody(request: Request): Promise<Uint8Array | null> {

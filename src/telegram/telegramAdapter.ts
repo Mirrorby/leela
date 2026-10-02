@@ -94,6 +94,8 @@ export interface TelegramWebApp {
    * подтверждение начисления (источник истины — вебхук successful_payment
    * на сервере, см. usePayments.ts:buyProduct). */
   openInvoice?: (url: string, callback: (status: 'paid' | 'cancelled' | 'failed' | 'pending') => void) => void;
+  /** Opens an external HTTPS checkout in the user's browser. */
+  openLink?: (url: string) => void;
 }
 
 declare global {

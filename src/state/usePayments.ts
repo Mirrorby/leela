@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Entitlements, Product, ProductId } from '../types/payments';
 import {
   getEntitlementsFromServer,
@@ -42,6 +42,24 @@ export function usePayments() {
       setLoading(false);
     }
   }, []);
+
+  // Returning from an external checkout only triggers a server balance read.
+  // A link click or browser return is never proof that payment succeeded.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { void refresh(); }, 300);
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
+  }, [refresh]);
 
   /**
    * Создаёт инвойс, открывает нативный экран оплаты Stars, и по статусу
