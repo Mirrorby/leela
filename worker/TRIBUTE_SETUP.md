@@ -61,15 +61,21 @@ Cloudflare → Workers & Pages → `leela-worker` → Settings → Variables and
 * **`TRIBUTE_PRODUCTS`**, текстовая переменная с JSON. Ключи — реальные
   числовые ID товаров Tribute. Значения задают SKU Лилы и ожидаемую оплату.
 
-Первый товар уже создан и указан в `worker/wrangler.toml`:
+Четыре разовых товара уже созданы и указаны в `worker/wrangler.toml`:
 
 | Товар | Tribute ID | Веб-ссылка | Цена |
 |---|---|---|---|
 | Лила — 1 партия | `161238` | https://web.tribute.tg/p/FWC | $1.59 USD |
+| Лила — 5 партий | `161251` | https://web.tribute.tg/p/FWP | $5.99 USD |
+| Лила — ИИ-разбор | `161252` | https://web.tribute.tg/p/FWQ | $1.99 USD |
+| Лила — партия + ИИ-разбор | `161253` | https://web.tribute.tg/p/FWR | $2.99 USD |
 
 ```json
 {
-  "161238": { "productId": "game_1", "amount": 159, "currency": "USD" }
+  "161238": { "productId": "game_1", "amount": 159, "currency": "USD" },
+  "161251": { "productId": "game_5", "amount": 599, "currency": "USD" },
+  "161252": { "productId": "ai_review_1", "amount": 199, "currency": "USD" },
+  "161253": { "productId": "game_ai_combo", "amount": 299, "currency": "USD" }
 }
 ```
 
@@ -81,7 +87,7 @@ Cloudflare → Workers & Pages → `leela-worker` → Settings → Variables and
 При изменении цены сначала обновляйте ожидаемую сумму, затем проверяйте покупку.
 При смене состава пакета создайте новый товар Tribute с новым ID.
 
-Настройка первого товара уже сохранена в секции `[vars]` `worker/wrangler.toml`,
+Настройки товаров уже сохранены в секции `[vars]` `worker/wrangler.toml`,
 чтобы дальнейшие деплои имели ту же конфигурацию. Для новых товаров добавьте
 их реальные числовые ID и проверенные цены. `TRIBUTE_API_KEY` всегда остаётся
 Secret.
