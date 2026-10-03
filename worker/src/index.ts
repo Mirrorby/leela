@@ -4,10 +4,10 @@ import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
 import { updateGame, getGameById, getGameByClientRequestId, createGameWithCharge, listGamesByUser, InvalidCursorError } from './games/repository';
-import { getEntitlements, chargeForAiReview, refundAiReviewCharge, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
+import { getEntitlements, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError } from './payments/repository';
 import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './payments/tribute';
 import { retireStarsRenewals } from './payments/retireStars';
-import { getAiReview, upsertAiReviewPending, markAiReviewReady, markAiReviewFailed } from './ai/reviewRepository';
+import { getRecoverableAiReview, reserveAiReview, markAiReviewReady, failAiReviewAndRefund, recoverExpiredAiReviews } from './ai/reviewRepository';
 import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
 import { logAnalyticsEvent } from './analytics/repository';
@@ -194,106 +194,79 @@ async function handleLogClientEvent(request: Request, env: Env, auth: ValidatedI
 // Батч 4: ИИ-разбор партии (Gemini 2.5 Flash — по требованию, не Anthropic).
 // ----------------------------------------------------------------------
 
-/**
- * Сама генерация выполняется В ФОНЕ через ctx.waitUntil (см. вызывающий код
- * handleStartAiReview) — HTTP-ответ уходит клиенту сразу со статусом
- * 'pending', а не ждёт ответа Gemini синхронно (генерация может занять
- * несколько секунд, незачем держать открытым HTTP-запрос клиента и рисковать
- * его собственным таймаутом). Клиент узнаёт результат через поллинг
- * GET .../analysis (handleGetAiReview).
- *
- * §12 ТЗ — при технической ошибке возвращаем списанный разбор на баланс, ИЗ
- * ТОГО ЖЕ источника (free/paid), откуда списали для этой попытки
- * (chargedFrom передаётся явно, а не перечитывается из БД — на случай, если
- * между списанием и этим моментом строка ai_reviews успела ещё раз
- * измениться, мы всё равно возвращаем ровно то, что списали именно мы).
- */
-async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, chargedFrom: 'free' | 'paid'): Promise<void> {
+// Analytics never decides whether a paid operation succeeded.
+async function logAiEvent(env: Env, telegramId: string, event: 'free_ai_used' | 'ai_review_started' | 'ai_review_completed', gameId: string): Promise<void> {
   try {
-    const prompt = buildReviewPrompt(game);
-    const text = await generateReview(env.GEMINI_API_KEY, prompt);
-    await markAiReviewReady(env.DB, game.id, text);
-    await logAnalyticsEvent(env.DB, telegramId, 'ai_review_completed', { gameId: game.id });
-  } catch (err) {
-    await markAiReviewFailed(env.DB, game.id, err instanceof Error ? err.message : String(err));
-    await refundAiReviewCharge(env.DB, telegramId, chargedFrom);
-    // §26 ТЗ не содержит отдельного события "ai_review_failed" — список
-    // событий там исчерпывающий (paywall/purchase/game/ai/subscription-воронка),
-    // сбой генерации — техническая ошибка, а не шаг воронки монетизации.
+    await logAnalyticsEvent(env.DB, telegramId, event, { gameId });
+  } catch {
+    console.warn('AI analytics write failed');
+  }
+}
+
+/** Fast background work is bounded below waitUntil's 30-second lifetime.
+ * Persistent reservations are recovered on read/start and by cron if the
+ * isolate is terminated. Only this attempt may settle or refund its credit. */
+async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, attempt: number): Promise<void> {
+  let saved: boolean;
+  try {
+    const text = await generateReview(env.GEMINI_API_KEY, buildReviewPrompt(game));
+    saved = await markAiReviewReady(env.DB, game.id, attempt, text);
+  } catch {
+    await failAiReviewAndRefund(env.DB, game.id, attempt);
+    return;
+  }
+  if (saved) {
+    await logAiEvent(env, telegramId, 'ai_review_completed', game.id);
+  } else {
+    // A late result may not replace a refunded or newer attempt.
+    await failAiReviewAndRefund(env.DB, game.id, attempt, true);
   }
 }
 
 async function handleStartAiReview(env: Env, ctx: ExecutionContext, auth: ValidatedInitData, gameId: string): Promise<Response> {
   const found = await getGameById(env.DB, gameId, auth.telegramId);
-  if (!found) {
-    return json({ error: 'not_found' }, { status: 404 });
-  }
+  if (!found) return json({ error: 'not_found' }, { status: 404 });
   const game = found.game;
-
   if (game.status !== 'FINISHED' && game.status !== 'ARCHIVED') {
     return json({ error: 'invalid_state', detail: 'ИИ-разбор доступен только для завершённой партии.' }, { status: 400 });
   }
 
-  const existing = await getAiReview(env.DB, gameId);
-  if (existing?.status === 'ready') {
-    // §11 ТЗ: повторный просмотр готового разбора — бесплатно, ничего не
-    // списываем повторно.
-    return json({ status: 'ready', content: existing.content });
-  }
-  if (existing?.status === 'pending') {
-    // Защита от двойного клика — не начинаем вторую генерацию (и не
-    // списываем баланс дважды) поверх уже идущей.
-    return json({ error: 'already_generating' }, { status: 409 });
-  }
-
-  let chargeSource: 'free' | 'paid';
+  await getRecoverableAiReview(env.DB, gameId);
+  let reservation;
   try {
-    const result = await chargeForAiReview(env.DB, auth.telegramId);
-    chargeSource = result.source;
+    reservation = await reserveAiReview(env.DB, gameId, auth.telegramId);
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
-      return json(
-        {
-          error: 'analysis_locked',
-          detail: 'Бесплатный и купленные ИИ-разборы закончились.',
-          products: listProductsWithTribute(env).filter((p) => p.grant.aiReviews > 0),
-        },
-        { status: 402 }
-      );
-    }
-    if (err instanceof BalanceVersionConflictError) {
-      return json({ error: 'version_conflict', detail: 'Баланс изменился параллельно — попробуйте ещё раз.' }, { status: 409 });
+      return json({
+        error: 'analysis_locked',
+        detail: 'Бесплатный и купленные ИИ-разборы закончились.',
+        products: listProductsWithTribute(env).filter((p) => p.grant.aiReviews > 0),
+      }, { status: 402 });
     }
     throw err;
   }
-
-  await upsertAiReviewPending(env.DB, gameId, auth.telegramId, chargeSource);
-  // §26 ТЗ: free_ai_used — только когда списание реально ушло с бесплатного
-  // счётчика (не при каждом старте разбора); ai_review_started — на КАЖДЫЙ
-  // успешно оплаченный/бесплатный запуск генерации, вне зависимости от
-  // источника списания.
-  if (chargeSource === 'free') {
-    await logAnalyticsEvent(env.DB, auth.telegramId, 'free_ai_used');
+  const { review, started } = reservation;
+  if (!started) {
+    if (review.status === 'ready') return json({ status: 'ready', content: review.content });
+    return json({ status: 'pending', error: 'already_generating' }, { status: 409 });
   }
-  await logAnalyticsEvent(env.DB, auth.telegramId, 'ai_review_started', { gameId });
-  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, chargeSource));
 
+  // Schedule first: an analytics failure must not strand a reservation.
+  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, review.updated_at).catch(() => {
+    console.warn('AI attempt settlement failed; reservation remains recoverable');
+  }));
+  ctx.waitUntil((async () => {
+    if (review.charged_from === 'free') await logAiEvent(env, auth.telegramId, 'free_ai_used', gameId);
+    await logAiEvent(env, auth.telegramId, 'ai_review_started', gameId);
+  })());
   return json({ status: 'pending' }, { status: 202 });
 }
 
 async function handleGetAiReview(env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
-  // getGameById уже скопирован по telegram_id — подтверждает, что партия
-  // принадлежит запрашивающему, ДО чтения самого разбора (ai_reviews не
-  // хранит собственной проверки владения на уровне запроса, полагается на
-  // эту проверку выше по стеку).
   const found = await getGameById(env.DB, gameId, auth.telegramId);
-  if (!found) {
-    return json({ error: 'not_found' }, { status: 404 });
-  }
-  const review = await getAiReview(env.DB, gameId);
-  if (!review) {
-    return json({ status: 'none' });
-  }
+  if (!found) return json({ error: 'not_found' }, { status: 404 });
+  const review = await getRecoverableAiReview(env.DB, gameId);
+  if (!review) return json({ status: 'none' });
   return json({ status: review.status, content: review.content, error: review.error });
 }
 
@@ -502,6 +475,8 @@ export default {
     return json({ error: 'not_found' }, { status: 404 });
   },
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    // Recover credits even when there is no client left to poll the review.
+    await recoverExpiredAiReviews(env.DB);
     await retireStarsRenewals(env.DB, env.BOT_TOKEN);
   },
 };

@@ -1,13 +1,37 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { generateReview } from './geminiClient';
+import { generateReview, GEMINI_TIMEOUT_MS } from './geminiClient';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 function geminiResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
 describe('generateReview', () => {
+  it('aborts a stalled provider request before waitUntil expires', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('timeout')), { once: true });
+    }));
+    const result = generateReview('key', 'prompt').catch((error: Error) => error);
+    await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS);
+    expect(await result).toBeInstanceOf(Error);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps the timeout active while reading a stalled response body', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      const response = geminiResponse({});
+      vi.spyOn(response, 'json').mockImplementation(() => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('body timeout')), { once: true });
+      }));
+      return response;
+    });
+    const result = generateReview('key', 'prompt').catch((error: Error) => error);
+    await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS);
+    expect(await result).toBeInstanceOf(Error);
+  });
   it('возвращает текст из candidates[0].content.parts', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       geminiResponse({ candidates: [{ content: { parts: [{ text: 'Разбор партии...' }] }, finishReason: 'STOP' }] })
@@ -48,8 +72,9 @@ describe('generateReview', () => {
     await expect(generateReview('key', 'prompt')).rejects.toThrow(/пустой/);
   });
 
-  it('HTTP-ошибка (не 2xx) — бросает исключение с текстом ответа', async () => {
+  it('HTTP-ошибка — сообщает статус без сохранения тела ответа провайдера', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('quota exceeded', { status: 429 }));
     await expect(generateReview('key', 'prompt')).rejects.toThrow(/429/);
+    await expect(generateReview('key', 'prompt')).rejects.not.toThrow(/quota exceeded/);
   });
 });

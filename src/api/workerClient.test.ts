@@ -23,6 +23,7 @@ describe('workerClient', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('createGameOnServer шлёт POST с телом {request, diceMode, clientRequestId} и заголовком Authorization: tma <initData>', async () => {
@@ -151,6 +152,31 @@ describe('workerClient', () => {
     const result = await getAiReviewFromServer('game-1');
     expect(result.status).toBe('ready');
     expect(result.content).toBe('Разбор');
+  });
+
+  it('AI requests abort if the server does not answer', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('timeout')), { once: true });
+    }));
+    const result = startAiReviewOnServer('game-1').catch((error: WorkerApiError) => error);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await result).toMatchObject({ status: 0, message: expect.stringContaining('вовремя') });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('AI timeout also covers reading the HTTP response body', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      const response = jsonResponse({});
+      vi.spyOn(response, 'json').mockImplementation(() => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('body timeout')), { once: true });
+      }));
+      return response;
+    });
+    const result = getAiReviewFromServer('game-1').catch((error: WorkerApiError) => error);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await result).toMatchObject({ status: 0 });
   });
 
   it('logClientAnalyticsEvent шлёт event в теле', async () => {

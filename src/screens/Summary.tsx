@@ -1,14 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { setActivePersistedGameId } from '../state/persistence';
 import { MoveTile } from '../components/MoveTile';
-import { getAiReviewFromServer, startAiReviewOnServer, logClientAnalyticsEvent, WorkerApiError } from '../api/workerClient';
+import { logClientAnalyticsEvent } from '../api/workerClient';
+import { useAiReview } from '../state/useAiReview';
 import { usePayments } from '../state/usePayments';
 import { formatProductPrice, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
-
-type AiState = 'checking' | 'none' | 'pending' | 'ready' | 'failed' | 'locked';
-
-const POLL_INTERVAL_MS = 2000;
 
 /**
  * Итог партии (переоформлен — п.7 правок). Список ходов — MoveTile
@@ -25,105 +22,29 @@ const POLL_INTERVAL_MS = 2000;
  *   3. Клик → startAiReviewOnServer сам решает, списывать бесплатный или
  *      платный разбор (клиент этот выбор не делает) — 402 означает "нечем
  *      списывать", тогда показываем покупку через usePayments.
- *   4. 'pending' → поллинг getAiReviewFromServer раз в 2с до ready/failed.
+ *   4. useAiReview проверяет статус без параллельных запросов и ограничивает ожидание.
  */
 export function Summary({ session, nav }: ScreenProps) {
   const { game } = session;
   const payments = usePayments();
 
-  const [aiState, setAiState] = useState<AiState>('checking');
-  const [aiContent, setAiContent] = useState<string | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const offerShownLoggedRef = useRef(false);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const review = useAiReview(game?.id);
+  const { state: aiState, content: aiContent, error: aiError } = review;
+  const handleGetReview = () => { void review.start(); };
+  const offerShownLoggedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!game) return;
-    let cancelled = false;
-
-    getAiReviewFromServer(game.id)
-      .then((result) => {
-        if (cancelled) return;
-        if (result.status === 'ready') {
-          setAiState('ready');
-          setAiContent(result.content ?? null);
-        } else if (result.status === 'pending') {
-          setAiState('pending');
-        } else if (result.status === 'failed') {
-          setAiState('failed');
-          setAiError(result.error ?? null);
-        } else {
-          setAiState('none');
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setAiState('none'); // офлайн на старте экрана — не блокируем сам экран итогов
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [game?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- game сам по себе не должен перезапускать проверку, только смена партии
-
-  useEffect(() => {
-    if (aiState !== 'none' || offerShownLoggedRef.current) return;
-    offerShownLoggedRef.current = true;
+    if (aiState !== 'none' || !game || offerShownLoggedRef.current === game.id) return;
+    offerShownLoggedRef.current = game.id;
     void logClientAnalyticsEvent('ai_offer_shown');
-  }, [aiState]);
+  }, [aiState, game?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (aiState === 'locked') void payments.refresh();
+    if (aiState === 'locked' || aiState === 'ready' || aiState === 'failed') void payments.refresh();
   }, [aiState, payments.refresh]);
-
-  useEffect(() => {
-    if (aiState !== 'pending' || !game) return;
-    pollTimerRef.current = setInterval(() => {
-      getAiReviewFromServer(game.id)
-        .then((result) => {
-          if (result.status === 'ready') {
-            setAiState('ready');
-            setAiContent(result.content ?? null);
-          } else if (result.status === 'failed') {
-            setAiState('failed');
-            setAiError(result.error ?? null);
-          }
-          // status === 'pending' — просто ждём следующего тика.
-        })
-        .catch(() => {
-          // Сбой одного тика поллинга — не повод останавливать сам поллинг,
-          // следующий интервал попробует снова.
-        });
-    }, POLL_INTERVAL_MS);
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
-  }, [aiState, game]);
 
   if (!game) return null;
   const reviewProduct = payments.products.find((product) => product.id === 'ai_review_1');
-
-  const handleGetReview = async () => {
-    setAiState('pending');
-    setAiError(null);
-    try {
-      const result = await startAiReviewOnServer(game.id);
-      if (result.status === 'ready') {
-        setAiState('ready');
-        setAiContent(result.content ?? null);
-      }
-      // status === 'pending' — состояние уже 'pending', поллинг подхватит сам.
-    } catch (err) {
-      if (err instanceof WorkerApiError && err.status === 402) {
-        setAiState('locked');
-      } else if (err instanceof WorkerApiError && err.status === 409) {
-        // already_generating — кто-то (другая вкладка?) уже запустил, просто ждём.
-        setAiState('pending');
-      } else {
-        setAiState('failed');
-        setAiError(err instanceof WorkerApiError ? err.message : 'Не удалось запросить разбор — проверь соединение.');
-      }
-    }
-  };
 
   return (
     <div className="screen screen-summary">
@@ -147,7 +68,7 @@ export function Summary({ session, nav }: ScreenProps) {
           </button>
         )}
 
-        {aiState === 'pending' && <p className="muted">Разбор генерируется — обычно занимает несколько секунд…</p>}
+        {(aiState === 'pending' || aiState === 'starting') && <p className="muted">Разбор генерируется — обычно занимает несколько секунд…</p>}
 
         {aiState === 'ready' && aiContent && <p className="ai-review-content">{aiContent}</p>}
 

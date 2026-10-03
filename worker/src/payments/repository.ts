@@ -108,83 +108,16 @@ export async function trackSubscriptionExpiryIfNeeded(db: D1Database, telegramId
 }
 
 export type GameChargeSource = 'subscription' | 'free' | 'paid';
-export type AiReviewChargeSource = 'free' | 'paid';
 
 /** Баланс исчерпан (нет активной подписки, нет бесплатных и купленных
  * партий) — вызывающий код (index.ts) должен ответить 402 с каталогом. */
 export class InsufficientBalanceError extends Error {
   constructor() {
-    super('insufficient balance for a new game');
+    super('insufficient balance');
     this.name = 'InsufficientBalanceError';
   }
 }
 
-/** Баланс изменился между чтением и списанием (гонка — например, два
- * параллельных "Начать партию") — вызывающий код должен ответить 409,
- * клиент повторяет запрос (с тем же clientRequestId — списания ещё не
- * произошло, повтор безопасен). Тот же принцип, что version_conflict у
- * games (см. worker/src/index.ts:handleRoll). */
-export class BalanceVersionConflictError extends Error {
-  constructor() {
-    super('user_balances changed concurrently');
-    this.name = 'BalanceVersionConflictError';
-  }
-}
-
-/**
- * Списание за ИИ-разбор — приоритет free → paid (§9 ТЗ). В отличие от
- * создания партии здесь НЕТ варианта "подписка" — §3.3 ТЗ прямо оговаривает,
- * что подписка не покрывает ИИ-разборы (см. entitlements.ts:canStartAiReview,
- * та же логика продублирована здесь намеренно, а не переиспользована — это
- * решение о деньгах, явное дублирование безопаснее скрытой косвенной связи
- * через общий helper).
- */
-export async function chargeForAiReview(db: D1Database, telegramId: string): Promise<{ source: AiReviewChargeSource }> {
-  const balance = await getOrCreateUserBalance(db, telegramId);
-  const now = Date.now();
-
-  if (balance.free_ai_reviews_remaining > 0) {
-    const result = await db
-      .prepare(
-        `UPDATE user_balances SET free_ai_reviews_remaining = free_ai_reviews_remaining - 1, version = version + 1, updated_at = ?
-         WHERE telegram_id = ? AND version = ? AND free_ai_reviews_remaining > 0`
-      )
-      .bind(now, telegramId, balance.version)
-      .run();
-    if ((result.meta?.changes ?? 0) === 0) throw new BalanceVersionConflictError();
-    return { source: 'free' };
-  }
-
-  if (balance.paid_ai_reviews > 0) {
-    const result = await db
-      .prepare(
-        `UPDATE user_balances SET paid_ai_reviews = paid_ai_reviews - 1, version = version + 1, updated_at = ?
-         WHERE telegram_id = ? AND version = ? AND paid_ai_reviews > 0`
-      )
-      .bind(now, telegramId, balance.version)
-      .run();
-    if ((result.meta?.changes ?? 0) === 0) throw new BalanceVersionConflictError();
-    return { source: 'paid' };
-  }
-
-  throw new InsufficientBalanceError();
-}
-
-/**
- * §12 ТЗ: если генерация упала технической ошибкой, списанный разбор
- * возвращается на баланс — ЧИСТО аддитивно, версия здесь не нужна (тот же
- * довод, что у applySuccessfulPayment: сложение в одном UPDATE атомарно
- * само по себе). source берётся из ai_reviews.charged_from конкретной
- * попытки (см. ai/reviewRepository.ts) — принципиально возвращать туда же,
- * откуда списали, а не всегда в paid.
- */
-export async function refundAiReviewCharge(db: D1Database, telegramId: string, source: AiReviewChargeSource): Promise<void> {
-  const column = source === 'free' ? 'free_ai_reviews_remaining' : 'paid_ai_reviews';
-  await db
-    .prepare(`UPDATE user_balances SET ${column} = ${column} + 1, version = version + 1, updated_at = ? WHERE telegram_id = ?`)
-    .bind(Date.now(), telegramId)
-    .run();
-}
 
 // ----------------------------------------------------------------------
 // Батч 3: транзакции (инвойсы) и начисление по successful_payment.

@@ -26,40 +26,43 @@ interface ErrorBody {
   detail?: string;
 }
 
-async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  // initData отсутствует (пустая строка), когда приложение открыто НЕ
-  // внутри Telegram (обычный браузер) — Worker в этом случае честно
-  // ответит 401, что и станет видимой пользователю ошибкой ниже.
+async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 0): Promise<T> {
   const initData = getInitData();
-
-  let res: Response;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
   try {
-    res = await fetch(`${WORKER_API_URL}${path}`, {
+    const res = await fetch(`${WORKER_API_URL}${path}`, {
       ...init,
+      signal: controller?.signal ?? init.signal,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `tma ${initData}`,
         ...init.headers,
       },
     });
-  } catch {
-    throw new WorkerApiError('Нет соединения с сервером — проверь интернет и попробуй ещё раз.', 0, null);
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch (error) {
+      if (controller?.signal.aborted) throw error;
+      // Empty bodies can be legitimate, e.g. HTTP 204.
+    }
+    if (!res.ok) {
+      const errorBody = body as ErrorBody | null;
+      throw new WorkerApiError(errorBody?.detail ?? errorBody?.error ?? res.statusText ?? 'Неизвестная ошибка сервера', res.status, body);
+    }
+    return body as T;
+  } catch (error) {
+    if (error instanceof WorkerApiError) throw error;
+    throw new WorkerApiError(
+      controller?.signal.aborted
+        ? 'Сервер не ответил вовремя. Проверьте соединение и повторите запрос.'
+        : 'Нет соединения с сервером — проверь интернет и попробуй ещё раз.',
+      0, null
+    );
+  } finally {
+    clearTimeout(timer);
   }
-
-  let body: unknown = null;
-  try {
-    body = await res.json();
-  } catch {
-    // Тело могло быть пустым (например, при 204) — не критично.
-  }
-
-  if (!res.ok) {
-    const errorBody = body as ErrorBody | null;
-    const detail = errorBody?.detail ?? errorBody?.error ?? res.statusText ?? 'Неизвестная ошибка сервера';
-    throw new WorkerApiError(detail, res.status, body);
-  }
-
-  return body as T;
 }
 
 /**
@@ -161,11 +164,11 @@ export interface AiReviewStatus {
  * просмотр, бесплатно, см. §11 ТЗ) — apiFetch не различает эти статусы
  * отдельно, тело ответа в обоих случаях содержит актуальный AiReviewStatus. */
 export async function startAiReviewOnServer(gameId: string): Promise<AiReviewStatus> {
-  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST' });
+  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST' }, 15_000);
 }
 
 export async function getAiReviewFromServer(gameId: string): Promise<AiReviewStatus> {
-  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis`);
+  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis`, {}, 15_000);
 }
 
 /** Единственное чисто клиентское событие аналитики (§26 ТЗ) — момент показа

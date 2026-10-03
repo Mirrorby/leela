@@ -1,5 +1,6 @@
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+export const GEMINI_TIMEOUT_MS = 20_000;
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -19,31 +20,38 @@ interface GeminiResponse {
  * официальной документации Gemini API на момент разработки.
  */
 export async function generateReview(apiKey: string, prompt: string): Promise<string> {
-  const response = await fetch(GEMINI_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+  try {
+    const response = await fetch(GEMINI_ENDPOINT, {
+      signal: controller.signal,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+    });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${errorBody}`);
+    if (!response.ok) {
+      throw new Error(`Gemini API error ${response.status}`);
+    }
+
+    const data = (await response.json()) as GeminiResponse;
+
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`Gemini заблокировал запрос: ${data.promptFeedback.blockReason}`);
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+    if (!text.trim()) {
+      throw new Error('Gemini вернул пустой ответ');
+    }
+    return text.trim();
+  } finally {
+    // Includes reading the response body, not just receiving HTTP headers.
+    clearTimeout(timer);
   }
-
-  const data = (await response.json()) as GeminiResponse;
-
-  if (data.promptFeedback?.blockReason) {
-    throw new Error(`Gemini заблокировал запрос: ${data.promptFeedback.blockReason}`);
-  }
-
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
-  if (!text.trim()) {
-    throw new Error('Gemini вернул пустой ответ');
-  }
-  return text.trim();
 }

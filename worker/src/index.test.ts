@@ -1092,6 +1092,54 @@ describe('монетизация (батч 4) — ИИ-разбор партии
     expect(entitlements.freeAiReviewsRemaining).toBe(0); // списано ровно один раз
   });
 
+  it('параллельные HTTP-запросы запускают одну генерацию и списывают один кредит', async () => {
+    let resolveFetch!: (response: Response) => void;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise((resolve) => { resolveFetch = resolve; }));
+    const auth = await authHeaderFor(40101);
+    const gameId = await createFinishedGame(auth, 40101);
+    await env.DB.prepare('UPDATE user_balances SET free_ai_reviews_remaining = 0, paid_ai_reviews = 2 WHERE telegram_id = ?')
+      .bind('40101').run();
+    const responses = await Promise.all([1, 2, 3].map(() => worker.fetch(
+      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx
+    )));
+    expect(responses.map((res) => res.status).sort()).toEqual([202, 409, 409]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect((await getOrCreateUserBalance(env.DB, '40101')).paid_ai_reviews).toBe(1);
+    resolveFetch(geminiOk('Один разбор'));
+    await flushWaitUntil();
+  });
+
+  it('сбой аналитики не превращает готовый разбор в failed и не возвращает использованный кредит', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiOk('Разбор'));
+    const auth = await authHeaderFor(40102);
+    const gameId = await createFinishedGame(auth, 40102);
+    await env.DB.prepare("CREATE TRIGGER fail_ai_analytics BEFORE INSERT ON analytics_events WHEN NEW.event LIKE '%ai%' BEGIN SELECT RAISE(ABORT, 'analytics failure'); END").run();
+    const res = await worker.fetch(
+      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx
+    );
+    expect(res.status).toBe(202);
+    await flushWaitUntil();
+    const review = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(review).toMatchObject({ status: 'ready', content: 'Разбор' });
+    expect((await getOrCreateUserBalance(env.DB, '40102')).free_ai_reviews_remaining).toBe(0);
+  });
+
+  it('GET восстанавливает зависший pending, возвращает кредит и позволяет повтор', async () => {
+    const auth = await authHeaderFor(40103);
+    const gameId = await createFinishedGame(auth, 40103);
+    const expired = Date.now() - 120_000;
+    await env.DB.prepare('UPDATE user_balances SET free_ai_reviews_remaining = 0 WHERE telegram_id = ?').bind('40103').run();
+    await env.DB.prepare("INSERT INTO ai_reviews (game_id, telegram_id, status, charged_from, created_at, updated_at) VALUES (?, ?, 'pending', 'free', ?, ?)")
+      .bind(gameId, '40103', expired, expired).run();
+    const review = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(review.status).toBe('failed');
+    expect((await getOrCreateUserBalance(env.DB, '40103')).free_ai_reviews_remaining).toBe(1);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiOk('Повтор'));
+    expect((await worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx)).status).toBe(202);
+    await flushWaitUntil();
+    expect((await getOrCreateUserBalance(env.DB, '40103')).free_ai_reviews_remaining).toBe(0);
+  });
+
   it('баланс исчерпан (free и paid = 0) — 402 analysis_locked, партия не помечается pending', async () => {
     const auth = await authHeaderFor(40006);
     const gameId = await createFinishedGame(auth, 40006);
@@ -1119,7 +1167,8 @@ describe('монетизация (батч 4) — ИИ-разбор партии
 
     const getRes = await readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
     expect(getRes.status).toBe('failed');
-    expect(getRes.error).toContain('429');
+    expect(getRes.error).toContain('возвращена на баланс');
+    expect(getRes.error).not.toContain('429');
 
     const entitlements = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
     expect(entitlements.freeAiReviewsRemaining).toBe(1); // возвращён — не потерян
