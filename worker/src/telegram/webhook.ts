@@ -14,7 +14,6 @@ import {
   applySuccessfulPayment,
   markSubscriptionAutoRenewOff,
 } from '../payments/repository';
-import { getProduct } from '../payments/catalog';
 import { logAnalyticsEvent } from '../analytics/repository';
 
 const TELEGRAM_SECRET_HEADER = 'X-Telegram-Bot-Api-Secret-Token';
@@ -108,40 +107,10 @@ async function answerPreCheckoutQuery(botToken: string, preCheckoutQueryId: stri
  * денег, поэтому ошибка (ok:false) абсолютно безопасна и обратима: платёж
  * просто не пройдёт, пользователь может попробовать снова.
  */
-async function handlePreCheckoutQuery(botToken: string, db: D1Database, query: TelegramPreCheckoutQuery): Promise<void> {
-  const transaction = await getTransactionById(db, query.invoice_payload);
-  if (!transaction) {
-    await answerPreCheckoutQuery(botToken, query.id, false, 'Заказ не найден или устарел — попробуйте оформить покупку заново.');
-    await logAnalyticsEvent(db, String(query.from.id), 'payment_failed', { reason: 'transaction_not_found' });
-    return;
-  }
-  if (transaction.status !== 'created') {
-    // Уже обработан (успешно/ошибка) или это повторная доставка того же
-    // pre_checkout_query — отклоняем, не проваливаемся молча.
-    await answerPreCheckoutQuery(botToken, query.id, false, 'Этот заказ уже обработан.');
-    await logAnalyticsEvent(db, transaction.telegram_id, 'payment_failed', { productId: transaction.product_id, reason: 'already_processed' });
-    return;
-  }
-  if (transaction.telegram_id !== String(query.from.id) || transaction.stars_amount !== query.total_amount) {
-    // Расхождение суммы/пользователя с тем, что записано при создании
-    // инвойса — верный признак подделки или сбоя, а не просто "не найдено".
-    await answerPreCheckoutQuery(botToken, query.id, false, 'Данные заказа не совпадают.');
-    await logAnalyticsEvent(db, transaction.telegram_id, 'payment_failed', { productId: transaction.product_id, reason: 'mismatch' });
-    return;
-  }
-  await answerPreCheckoutQuery(botToken, query.id, true);
+async function handlePreCheckoutQuery(botToken: string, _db: D1Database, query: TelegramPreCheckoutQuery): Promise<void> {
+  await answerPreCheckoutQuery(botToken, query.id, false, 'Оплата Stars отключена. Откройте Лилу и выберите оплату через Tribute.');
 }
 
-/**
- * §14/§15 ТЗ — деньги УЖЕ получены Telegram, эта функция обязана либо
- * успешно начислить доступ, либо (при сбое) дать вызывающему коду
- * прокинуть исключение дальше, чтобы вебхук ответил НЕ 200 — тогда Telegram
- * повторит доставку этого update (см. handleTelegramWebhook ниже: этот
- * путь единственный, где мы намеренно НЕ проглатываем ошибку в 200).
- * Молча проглотить сбой здесь означало бы принять деньги и не выдать
- * доступ — недопустимо, в отличие, например, от неудачной отправки
- * приветственного сообщения на /start.
- */
 async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage): Promise<void> {
   const payment = message.successful_payment;
   if (!payment || !message.from) return;
@@ -170,11 +139,10 @@ async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage)
   // оплата/продление) и ai_review_1 логируются отдельными событиями вместо
   // общего payment_success — см. комментарий в index.ts:handleCreateInvoice
   // про то же разделение на этапе payment_started/ai_payment_started.
-  const product = getProduct(transaction.product_id);
   const payload = { productId: transaction.product_id, starsAmount: transaction.stars_amount };
   if (isRenewal) {
     await logAnalyticsEvent(db, transaction.telegram_id, 'subscription_renewed', payload);
-  } else if (product?.isSubscription) {
+  } else if (transaction.granted_subscription_days > 0) {
     await logAnalyticsEvent(db, transaction.telegram_id, 'subscription_started', payload);
   } else if (transaction.product_id === 'ai_review_1') {
     await logAnalyticsEvent(db, transaction.telegram_id, 'ai_payment_success', payload);

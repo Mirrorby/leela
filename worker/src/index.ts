@@ -3,17 +3,15 @@ import { isValidDiceValue, rollVirtualDice } from './game/diceEngine';
 import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
-import { insertGame, updateGame, getGameById, getGameByClientRequestId, listGamesByUser, InvalidCursorError } from './games/repository';
-import { getProduct } from './payments/catalog';
-import { getEntitlements, chargeForGame, hasActiveSubscription, createPendingTransaction, chargeForAiReview, refundAiReviewCharge, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
-import { createInvoiceLink } from './payments/invoice';
+import { updateGame, getGameById, getGameByClientRequestId, createGameWithCharge, listGamesByUser, InvalidCursorError } from './games/repository';
+import { getEntitlements, chargeForAiReview, refundAiReviewCharge, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError, BalanceVersionConflictError } from './payments/repository';
 import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './payments/tribute';
+import { retireStarsRenewals } from './payments/retireStars';
 import { getAiReview, upsertAiReviewPending, markAiReviewReady, markAiReviewFailed } from './ai/reviewRepository';
 import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
 import { logAnalyticsEvent } from './analytics/repository';
 import type { DiceMode, GameState } from './types/game';
-import type { ProductId } from './types/payments';
 
 export interface Env extends TributeEnv {
   DB: D1Database;
@@ -110,47 +108,21 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
     return json({ error: 'ruleset_not_found', detail: DEFAULT_RULESET_ID }, { status: 500 });
   }
 
-  // Списание — ПЕРЕД созданием партии (после проверки ruleset'а — если его
-  // почему-то нет, партия и так не создастся, незачем сначала списывать
-  // баланс за партию, которая не будет создана).
-  let chargeSource: 'subscription' | 'free' | 'paid';
+  const game = createNewGame({
+    id: crypto.randomUUID(), ruleset, request: body.request.trim(), diceMode: body.diceMode as DiceMode,
+  });
   try {
-    const result = await chargeForGame(env.DB, auth.telegramId);
-    chargeSource = result.source;
+    const created = await createGameWithCharge(env.DB, game, auth.telegramId, clientRequestId);
+    if (created.created && created.source) await logAnalyticsEvent(env.DB, auth.telegramId, `${created.source}_game_started`);
+    return json({ game: created.game }, { status: created.created ? 201 : 200 });
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
-      // §26 ТЗ, §6 "Основной paywall" — событие привязано именно к этой
-      // точке (создание партии, все три источника исчерпаны), не к
-      // произвольному открытию любого экрана.
       await logAnalyticsEvent(env.DB, auth.telegramId, 'paywall_opened');
-      return json(
-        {
-          error: 'games_limit_reached',
-          detail: 'Бесплатные и купленные партии закончились.',
-          products: listProductsWithTribute(env).filter((p) => p.grant.games > 0 || p.isSubscription),
-        },
-        { status: 402 }
-      );
-    }
-    if (err instanceof BalanceVersionConflictError) {
-      return json(
-        { error: 'version_conflict', detail: 'Баланс изменился параллельно (другое устройство/вкладка) — попробуйте ещё раз.' },
-        { status: 409 }
-      );
+      return json({ error: 'games_limit_reached', detail: 'Бесплатные и купленные партии закончились.',
+        products: listProductsWithTribute(env).filter((p) => p.grant.games > 0) }, { status: 402 });
     }
     throw err;
   }
-  await logAnalyticsEvent(env.DB, auth.telegramId, `${chargeSource}_game_started`);
-
-  const game = createNewGame({
-    id: crypto.randomUUID(),
-    ruleset,
-    request: body.request.trim(),
-    diceMode: body.diceMode as DiceMode,
-  });
-
-  await insertGame(env.DB, game, auth.telegramId, clientRequestId);
-  return json({ game }, { status: 201 });
 }
 
 async function handleListGames(request: Request, env: Env, auth: ValidatedInitData): Promise<Response> {
@@ -203,7 +175,7 @@ async function handleGetEntitlements(env: Env, auth: ValidatedInitData): Promise
  * ai_offer_shown (момент показа экрана "Получить ИИ-разбор" на Summary,
  * см. batch 6 фронтенда) — это чистый просмотр UI, ни один API-запрос сам
  * по себе с ним не совпадает. Остальные 16 событий из §26 логируются на
- * естественных серверных точках (см. handleCreateGame/handleCreateInvoice/
+ * естественных серверных точках (см. handleCreateGame/
  * handleStartAiReview/webhook.ts) без отдельного эндпоинта — специально НЕ
  * делаю его общим "любое событие с фронта", узкий allowlist на одно
  * конкретное значение достаточен и не даёт клиенту засорить таблицу
@@ -216,48 +188,6 @@ async function handleLogClientEvent(request: Request, env: Env, auth: ValidatedI
   }
   await logAnalyticsEvent(env.DB, auth.telegramId, 'ai_offer_shown');
   return json({ ok: true });
-}
-
-/**
- * §20 ТЗ (нет параллельных подписок) проверяется здесь, ДО обращения к Bot
- * API — дешевле отклонить локально, чем создавать реальную ссылку на
- * оплату, которую потом пришлось бы аннулировать вручную.
- */
-async function handleCreateInvoice(request: Request, env: Env, auth: ValidatedInitData): Promise<Response> {
-  const body = await readJson<{ productId?: unknown }>(request);
-  const productId = typeof body?.productId === 'string' ? body.productId : null;
-  const product = productId ? getProduct(productId) : null;
-  if (!product) {
-    return json({ error: 'invalid_body', detail: 'productId is missing or unknown' }, { status: 400 });
-  }
-
-  // §26 ТЗ: "для событий покупки сохранять тип продукта" — здесь и во всех
-  // остальных analytics-вызовах в этой функции/вебхуке. product_selected
-  // логируется независимо от того, состоится ли сама покупка (пользователь
-  // мог передумать/платёж не пройти) — это намеренно РАНЬШЕ проверки на
-  // параллельную подписку ниже, чтобы даже отклонённая здесь попытка была
-  // видна в воронке как "продукт выбран".
-  await logAnalyticsEvent(env.DB, auth.telegramId, 'product_selected', { productId: product.id });
-
-  if (product.isSubscription && (await hasActiveSubscription(env.DB, auth.telegramId))) {
-    return json({ error: 'subscription_already_active', detail: 'У вас уже есть активная подписка.' }, { status: 400 });
-  }
-
-  const transaction = await createPendingTransaction(env.DB, auth.telegramId, product.id as ProductId);
-  const invoiceUrl = await createInvoiceLink(env.BOT_TOKEN, transaction.id, product);
-
-  // ai_review_1 — единственный продукт, у которого в §26 отдельная ветка
-  // событий (ai_payment_started/ai_payment_success) вместо общей
-  // (payment_started/payment_success). game_ai_combo намеренно остаётся в
-  // общей ветке — предлагается как upsell именно на paywall'е партий (§5:
-  // "рекомендуется предлагать... при выборе покупки одной партии"), поэтому
-  // по контексту это "игровая", а не "ИИ" покупка.
-  await logAnalyticsEvent(env.DB, auth.telegramId, product.id === 'ai_review_1' ? 'ai_payment_started' : 'payment_started', {
-    productId: product.id,
-    starsAmount: product.stars,
-  });
-
-  return json({ invoiceUrl });
 }
 
 // ----------------------------------------------------------------------
@@ -548,7 +478,7 @@ export default {
       const auth = await requireAuth(request, env);
       if (!isValidatedInitData(auth)) return auth;
       if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
-      return handleCreateInvoice(request, env, auth);
+      return json({ error: 'stars_payments_retired', detail: 'Оплата Stars больше недоступна. Используйте товары Tribute.' }, { status: 410 });
     }
 
     if (url.pathname === '/api/v1/analytics/event') {
@@ -570,5 +500,8 @@ export default {
     }
 
     return json({ error: 'not_found' }, { status: 404 });
+  },
+  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    await retireStarsRenewals(env.DB, env.BOT_TOKEN);
   },
 };

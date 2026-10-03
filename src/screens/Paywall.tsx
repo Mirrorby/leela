@@ -4,11 +4,11 @@ import { usePayments } from '../state/usePayments';
 import type { ProductId } from '../types/payments';
 import { formatProductPrice, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
 
-/** §6 ТЗ ("Основной paywall") — партии-продукты + подписка. game_ai_combo
+/** §6 ТЗ ("Основной paywall") — пакеты партий Tribute. game_ai_combo
  * включён сюда же (не в апселл ИИ-разбора на Summary) — §5 ТЗ: "комбо
  * рекомендуется предлагать... при выборе покупки одной партии", т.е.
  * контекстно это апселл именно здесь. */
-const GAME_PRODUCT_IDS: ProductId[] = ['game_1', 'game_5', 'subscription_unlimited', 'game_ai_combo'];
+const GAME_PRODUCT_IDS: ProductId[] = ['game_1', 'game_5', 'game_ai_combo'];
 
 /**
  * Пэйвол на создание партии — DiceModeSelect ведёт сюда (nav.push), когда
@@ -19,7 +19,6 @@ const GAME_PRODUCT_IDS: ProductId[] = ['game_1', 'game_5', 'subscription_unlimit
  */
 export function Paywall({ session, nav }: ScreenProps) {
   const payments = usePayments();
-  const [buyingId, setBuyingId] = useState<ProductId | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,38 +29,13 @@ export function Paywall({ session, nav }: ScreenProps) {
 
   const gameProducts = payments.products.filter((p) => GAME_PRODUCT_IDS.includes(p.id));
 
-  const handleBuy = async (productId: ProductId) => {
-    setBuyingId(productId);
-    setMessage(null);
-    const status = await payments.buyProduct(productId);
-    if (status === 'paid') {
-      // Автоматически довершаем то, ради чего вообще открылся пэйвол —
-      // request/diceMode уже в session с предыдущего экрана (DiceModeSelect),
-      // startGame() переиспользует тот же pendingStartGameIdRef (он не
-      // сбрасывался на 402 — партия так и не была создана, повтор безопасен).
-      try {
-        await session.startGame();
-        nav.resetTo('GameHome');
-        return;
-      } catch {
-        setMessage('Оплата прошла, но партию пока не удалось создать — подождите пару секунд и нажмите «Продолжить» ниже.');
-        void payments.refresh();
-      }
-    } else if (status === 'failed') {
-      setMessage('Не удалось завершить оплату — попробуйте ещё раз.');
-    }
-    // 'cancelled' — пользователь сам закрыл экран оплаты, ничего не показываем.
-    setBuyingId(null);
-  };
-
   const handleContinue = async () => {
     setMessage(null);
     try {
       await session.startGame();
       nav.resetTo('GameHome');
     } catch {
-      // session.error уже выставлен, покажется через session ниже (если
-      // экран его читает) — здесь достаточно остаться на месте.
+      setMessage('Не удалось создать партию — попробуйте ещё раз.');
     }
   };
 
@@ -81,8 +55,7 @@ export function Paywall({ session, nav }: ScreenProps) {
                 <div className="muted">{formatProductPrice(product)}</div>
               </div>
               <div className="game-list-actions">
-                <ProductPurchaseButton product={product} onBuyStars={() => { void handleBuy(product.id); }} disabled={buyingId !== null}
-                  label={buyingId === product.id ? 'Открываем оплату…' : 'Купить'} />
+                <ProductPurchaseButton product={product} />
               </div>
             </li>
           ))}
@@ -91,7 +64,9 @@ export function Paywall({ session, nav }: ScreenProps) {
 
       {gameProducts.some((product) => product.tribute) && <TributePaymentNotice loading={payments.loading} onRefresh={() => { void payments.refresh(); }} />}
 
-      {message && <p className="muted">{message}</p>}
+      {message && <p className="screen-error">{message}</p>}
+      {session.error && <p className="screen-error">{session.error}</p>}
+      {!payments.loading && !payments.error && payments.products.length === 0 && <p className="muted">Оплата временно недоступна. Попробуйте обновить баланс позже.</p>}
       {payments.error && <p className="screen-error">{payments.error}</p>}
 
       {payments.entitlements?.canStartGame && (

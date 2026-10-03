@@ -2,22 +2,18 @@
 // файл — финальный источник продуктовых правил, конфликты с более ранними
 // решениями в чате разрешаются в пользу файла).
 
-export type ProductId = 'game_1' | 'game_5' | 'subscription_unlimited' | 'ai_review_1' | 'game_ai_combo';
+export type ProductId = 'game_1' | 'game_5' | 'ai_review_1' | 'game_ai_combo';
 
 export interface ProductGrant {
   games: number;
   aiReviews: number;
-  /** Только для subscription_unlimited — описательное поле; реальный период
-   * подписки в Telegram Bot API задаётся отдельной константой
-   * SUBSCRIPTION_PERIOD_SECONDS (payments/catalog.ts), т.к. API принимает
-   * там СТРОГО количество секунд, а не "количество дней". */
+  /** Historical grant field; new products do not include subscriptions. */
   subscriptionDays: number;
 }
 
 export interface Product {
   id: ProductId;
   title: string;
-  stars: number;
   grant: ProductGrant;
   isSubscription: boolean;
   /** Public checkout details; amount is in minor currency units. */

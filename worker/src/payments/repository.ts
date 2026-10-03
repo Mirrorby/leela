@@ -1,6 +1,6 @@
-import type { Entitlements, ProductId } from '../types/payments';
+import type { Entitlements } from '../types/payments';
 import { computeEntitlements } from './entitlements';
-import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT, getProduct } from './catalog';
+import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from './catalog';
 import { logAnalyticsEvent } from '../analytics/repository';
 
 export interface UserBalanceRow {
@@ -132,66 +132,8 @@ export class BalanceVersionConflictError extends Error {
 }
 
 /**
- * Атомарное списание за одну партию, приоритет по §3.3/§9 ТЗ: подписка →
- * бесплатные партии → купленные. Подписка не расходует счётчик — просто
- * подтверждает право начать партию, пока period_end в будущем.
- *
- * Каждое условное UPDATE проверяет version И достаточность остатка ОДНИМ
- * WHERE (`version = ? AND free_games_remaining > 0`) — если строка успела
- * измениться параллельным запросом между SELECT (в getOrCreateUserBalance
- * выше по стеку) и этим UPDATE, `.meta.changes` будет 0 независимо от
- * причины (сама гонка или кто-то другой уже потратил последнюю партию), и
- * мы всегда просим клиента повторить запрос заново — он перечитает
- * актуальный баланс и корректно попадёт либо в успешное списание, либо в
- * честный 402, а не получит партию поверх недостоверного счёта.
- *
- * Известный остаточный риск (осознанно принят, не D1-транзакция на два
- * оператора): если этот UPDATE прошёл, а последующий insertGame (в
- * index.ts) всё же упадёт по непредвиденной причине, баланс окажется
- * списан без созданной партии. Для масштаба этого проекта — редкий и
- * дешёвый в ручном разборе случай (не стали городить компенсирующую
- * транзакцию/сагу ради него); если станет реальной проблемой — можно
- * добавить сверку по analytics_events позже.
- */
-export async function chargeForGame(db: D1Database, telegramId: string): Promise<{ source: GameChargeSource }> {
-  const [balance, subscription] = await Promise.all([getOrCreateUserBalance(db, telegramId), getLatestSubscription(db, telegramId)]);
-  const now = Date.now();
-  const subscriptionActive = subscription != null && subscription.period_end > now;
-
-  if (subscriptionActive) {
-    return { source: 'subscription' };
-  }
-
-  if (balance.free_games_remaining > 0) {
-    const result = await db
-      .prepare(
-        `UPDATE user_balances SET free_games_remaining = free_games_remaining - 1, version = version + 1, updated_at = ?
-         WHERE telegram_id = ? AND version = ? AND free_games_remaining > 0`
-      )
-      .bind(now, telegramId, balance.version)
-      .run();
-    if ((result.meta?.changes ?? 0) === 0) throw new BalanceVersionConflictError();
-    return { source: 'free' };
-  }
-
-  if (balance.paid_games > 0) {
-    const result = await db
-      .prepare(
-        `UPDATE user_balances SET paid_games = paid_games - 1, version = version + 1, updated_at = ?
-         WHERE telegram_id = ? AND version = ? AND paid_games > 0`
-      )
-      .bind(now, telegramId, balance.version)
-      .run();
-    if ((result.meta?.changes ?? 0) === 0) throw new BalanceVersionConflictError();
-    return { source: 'paid' };
-  }
-
-  throw new InsufficientBalanceError();
-}
-
-/**
  * Списание за ИИ-разбор — приоритет free → paid (§9 ТЗ). В отличие от
- * chargeForGame здесь НЕТ варианта "подписка" — §3.3 ТЗ прямо оговаривает,
+ * создания партии здесь НЕТ варианта "подписка" — §3.3 ТЗ прямо оговаривает,
  * что подписка не покрывает ИИ-разборы (см. entitlements.ts:canStartAiReview,
  * та же логика продублирована здесь намеренно, а не переиспользована — это
  * решение о деньгах, явное дублирование безопаснее скрытой косвенной связи
@@ -263,60 +205,7 @@ export interface TransactionRow {
   updated_at: number;
 }
 
-/** Уже есть активная (period_end в будущем) подписка — §20 ТЗ: у одного
- * пользователя не должно быть параллельных подписок. Проверяется ДО
- * создания invoice на subscription_unlimited (см. index.ts). */
-export async function hasActiveSubscription(db: D1Database, telegramId: string): Promise<boolean> {
-  const sub = await getLatestSubscription(db, telegramId);
-  return sub != null && sub.period_end > Date.now();
-}
-
-/**
- * Создаёт "черновик" транзакции (status='created') ДО обращения к Bot API
- * за ссылкой на инвойс — id этой строки становится invoice_payload
- * (см. payments/invoice.ts), и именно по нему потом опознаётся
- * pre_checkout_query/successful_payment в вебхуке (worker/src/telegram/webhook.ts).
- * granted_* — снимок из каталога НА МОМЕНТ покупки (§28 ТЗ), не пересчитывается
- * позже, даже если цены в catalog.ts изменятся до того, как платёж завершится.
- */
-export async function createPendingTransaction(
-  db: D1Database,
-  telegramId: string,
-  productId: ProductId
-): Promise<TransactionRow> {
-  const product = getProduct(productId);
-  if (!product) {
-    throw new Error(`unknown productId: ${productId}`);
-  }
-  const now = Date.now();
-  const id = crypto.randomUUID();
-  await db
-    .prepare(
-      `INSERT INTO transactions (
-        id, telegram_id, product_id, stars_amount, status, telegram_payment_charge_id,
-        is_subscription_renewal, granted_games, granted_ai_reviews, granted_subscription_days,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'created', NULL, 0, ?, ?, ?, ?, ?)`
-    )
-    .bind(id, telegramId, productId, product.stars, product.grant.games, product.grant.aiReviews, product.grant.subscriptionDays, now, now)
-    .run();
-
-  return {
-    id,
-    telegram_id: telegramId,
-    product_id: productId,
-    stars_amount: product.stars,
-    status: 'created',
-    telegram_payment_charge_id: null,
-    is_subscription_renewal: 0,
-    granted_games: product.grant.games,
-    granted_ai_reviews: product.grant.aiReviews,
-    granted_subscription_days: product.grant.subscriptionDays,
-    created_at: now,
-    updated_at: now,
-  };
-}
-
+/** Read historical invoice snapshots; new Stars invoices cannot be created. */
 export async function getTransactionById(db: D1Database, id: string): Promise<TransactionRow | null> {
   const row = await db.prepare('SELECT * FROM transactions WHERE id = ?').bind(id).first<TransactionRow>();
   return row ?? null;

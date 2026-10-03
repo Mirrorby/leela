@@ -1,12 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import worker, { type Env } from './index';
-import { createFakeD1 } from './testUtils/fakeD1';
+import { createSqliteD1 } from './testUtils/sqliteD1';
 import { buildSignedInitData, freshAuthDate, TEST_BOT_TOKEN } from './testUtils/signInitData';
 import { getOrCreateUserBalance } from './payments/repository';
 import { listAnalyticsEvents } from './analytics/repository';
 
+const databases: ReturnType<typeof createSqliteD1>[] = [];
+afterEach(() => { databases.splice(0).forEach(({ sqlite }) => sqlite.close()); });
+
 function makeEnv(): Env {
-  return { DB: createFakeD1(), BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'test-webhook-secret', GEMINI_API_KEY: 'test-gemini-key' };
+  const database = createSqliteD1(); databases.push(database);
+  return { DB: database.db, BOT_TOKEN: TEST_BOT_TOKEN, WEBHOOK_SECRET: 'test-webhook-secret', GEMINI_API_KEY: 'test-gemini-key', TRIBUTE_API_KEY: 'test-tribute-key', TRIBUTE_PRODUCTS: JSON.stringify({ 161238: { productId: 'game_1', amount: 159, currency: 'USD' }, 161251: { productId: 'game_5', amount: 599, currency: 'USD' }, 161252: { productId: 'ai_review_1', amount: 199, currency: 'USD' }, 161253: { productId: 'game_ai_combo', amount: 299, currency: 'USD' } }) };
 }
 
 async function authHeaderFor(telegramId: number): Promise<string> {
@@ -740,14 +744,14 @@ describe('монетизация (батч 1) — /api/v1/products и /api/v1/en
     expect(res.status).toBe(401);
   });
 
-  it('/api/v1/products возвращает все 5 продуктов каталога', async () => {
+  it('/api/v1/products возвращает четыре товара Tribute без Stars', async () => {
     const auth = await authHeaderFor(9001);
     const res = await worker.fetch(req('/api/v1/products', { headers: { Authorization: auth } }), env, fakeCtx);
     expect(res.status).toBe(200);
     const body = await readJson(res);
-    expect(body.products).toHaveLength(5);
+    expect(body.products).toHaveLength(4);
     expect(body.products.map((p: { id: string }) => p.id).sort()).toEqual(
-      ['ai_review_1', 'game_1', 'game_5', 'game_ai_combo', 'subscription_unlimited'].sort()
+      ['ai_review_1', 'game_1', 'game_5', 'game_ai_combo'].sort()
     );
   });
 
@@ -916,133 +920,26 @@ describe('монетизация (батч 2) — списание партий,
     expect(typeof body.game.id).toBe('string');
   });
 
-  it('конфликт версии баланса (гонка) — 409, а не тихая порча счёта', async () => {
-    const auth = await authHeaderFor(20009);
-    const telegramId = String(20009);
-    await getOrCreateUserBalance(env.DB, telegramId);
-    // Меняем версию баланса "из-под ног" между чтением и записью —
-    // эмулирует параллельный запрос, который уже успел списать раньше нас.
-    const originalPrepare = env.DB.prepare.bind(env.DB);
-    let intercepted = false;
-    vi.spyOn(env.DB, 'prepare').mockImplementation((query: string) => {
-      const stmt = originalPrepare(query);
-      if (!intercepted && query.trim().startsWith('UPDATE user_balances SET free_games_remaining = free_games_remaining - 1')) {
-        intercepted = true;
-        return {
-          ...stmt,
-          bind: (...args: unknown[]) => {
-            // Гонка: конкурентный запрос "успевает" поднять version раньше нас.
-            void env.DB.prepare('UPDATE user_balances SET version = ? WHERE telegram_id = ?').bind(999, telegramId).run();
-            return stmt.bind(...args);
-          },
-        } as D1PreparedStatement;
-      }
-      return stmt;
-    });
 
-    const { res, body } = await createGame(auth);
-    expect(res.status).toBe(409);
-    expect(body.error).toBe('version_conflict');
-  });
 });
 
-describe('монетизация (батч 3, найденный пробел покрываем сейчас) — POST /api/v1/payments/invoice', () => {
-  let env: Env;
-
-  beforeEach(() => {
-    env = makeEnv();
-    vi.restoreAllMocks();
-  });
-
-  it('без авторизации — 401', async () => {
-    const res = await worker.fetch(req('/api/v1/payments/invoice', { method: 'POST' }), env, fakeCtx);
+describe('Stars checkout retirement', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  it('requires auth before returning the retirement response', async () => {
+    const res = await worker.fetch(req('/api/v1/payments/invoice', { method: 'POST' }), makeEnv(), fakeCtx);
     expect(res.status).toBe(401);
   });
-
-  it('неизвестный productId — 400', async () => {
-    const auth = await authHeaderFor(30001);
-    const res = await worker.fetch(
-      req('/api/v1/payments/invoice', {
-        method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'no-such-product' }),
-      }),
-      env,
-      fakeCtx
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it('валидный productId — создаёт транзакцию и возвращает invoiceUrl из createInvoiceLink', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, result: 'https://t.me/invoice/abc' }), { status: 200 })
-    );
-    const auth = await authHeaderFor(30002);
-    const res = await worker.fetch(
-      req('/api/v1/payments/invoice', {
-        method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'game_5' }),
-      }),
-      env,
-      fakeCtx
-    );
-    expect(res.status).toBe(200);
-    const body = await readJson(res);
-    expect(body.invoiceUrl).toBe('https://t.me/invoice/abc');
-
-    // Тело запроса к Bot API должно нести цену/название именно этого продукта.
-    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const sentBody = JSON.parse((init as RequestInit).body as string);
-    expect(sentBody.prices[0].amount).toBe(299);
-    expect(sentBody.currency).toBe('XTR');
-  });
-
-  it('§20 ТЗ: попытка купить подписку при уже активной подписке — 400 subscription_already_active, invoice НЕ создаётся', async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify({ ok: true, result: 'https://t.me/invoice/x' }), { status: 200 }));
-    const auth = await authHeaderFor(30003);
-    const telegramId = String(30003);
-    await getOrCreateUserBalance(env.DB, telegramId);
-    await env.DB
-      .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind('sub-1', telegramId, Date.now() + 100000, 1, Date.now(), Date.now())
-      .run();
-
-    const res = await worker.fetch(
-      req('/api/v1/payments/invoice', {
-        method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'subscription_unlimited' }),
-      }),
-      env,
-      fakeCtx
-    );
-    expect(res.status).toBe(400);
-    const body = await readJson(res);
-    expect(body.error).toBe('subscription_already_active');
-    expect(fetchSpy).not.toHaveBeenCalled(); // дешевле отклонить локально, не дошли до Bot API
-  });
-
-  it('продукт-подписка без активной подписки — invoice создаётся с subscription_period', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ ok: true, result: 'https://t.me/invoice/sub' }), { status: 200 })
-    );
-    const auth = await authHeaderFor(30004);
-    const res = await worker.fetch(
-      req('/api/v1/payments/invoice', {
-        method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'subscription_unlimited' }),
-      }),
-      env,
-      fakeCtx
-    );
-    expect(res.status).toBe(200);
-    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const sentBody = JSON.parse((init as RequestInit).body as string);
-    expect(sentBody.subscription_period).toBe(2592000);
+  it('does not create an invoice, transaction or analytics event for any old product', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const env = makeEnv(); const auth = await authHeaderFor(30002);
+    for (const productId of ['game_1', 'game_5', 'ai_review_1', 'game_ai_combo', 'subscription_unlimited']) {
+      const res = await worker.fetch(req('/api/v1/payments/invoice', { method: 'POST', headers: { Authorization: auth }, body: JSON.stringify({ productId }) }), env, fakeCtx);
+      expect(res.status).toBe(410);
+      expect((await readJson(res)).error).toBe('stars_payments_retired');
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM transactions').first()).toEqual({ n: 0 });
+    expect(await listAnalyticsEvents(env.DB, '30002')).toEqual([]);
   });
 });
 
@@ -1351,38 +1248,7 @@ describe('монетизация (батч 5) — аналитика §26', () =
     expect(events.map((e) => e.event)).toEqual(['subscription_game_started']);
   });
 
-  it('POST /payments/invoice — логирует product_selected и payment_started с productId', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, result: 'https://t.me/x' }), { status: 200 }));
-    const auth = await authHeaderFor(50005);
-    await worker.fetch(
-      req('/api/v1/payments/invoice', {
-        method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'game_5' }),
-      }),
-      env,
-      fakeCtx
-    );
-    const events = await listAnalyticsEvents(env.DB, String(50005));
-    expect(events.map((e) => e.event)).toEqual(['product_selected', 'payment_started']);
-    expect(JSON.parse(events[1].payload!)).toMatchObject({ productId: 'game_5', starsAmount: 299 });
-  });
 
-  it('POST /payments/invoice с ai_review_1 — логирует ai_payment_started, а не общий payment_started', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, result: 'https://t.me/x' }), { status: 200 }));
-    const auth = await authHeaderFor(50006);
-    await worker.fetch(
-      req('/api/v1/payments/invoice', {
-        method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: 'ai_review_1' }),
-      }),
-      env,
-      fakeCtx
-    );
-    const events = await listAnalyticsEvents(env.DB, String(50006));
-    expect(events.map((e) => e.event)).toEqual(['product_selected', 'ai_payment_started']);
-  });
 
   it('успешный бесплатный ИИ-разбор — логирует free_ai_used, ai_review_started, ai_review_completed', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

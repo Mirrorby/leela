@@ -1,46 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { usePayments } from '../state/usePayments';
-import type { ProductId } from '../types/payments';
 import { formatProductPrice, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
 
 function formatDate(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-/**
- * §24 ТЗ ("Экран Ваш доступ"). Отмены подписки в этом UI намеренно НЕТ —
- * пользователь управляет автопродлением в самом Telegram (кнопка "Отменить
- * подписку" под платежом бота), не через наш интерфейс; наш сервер узнаёт
- * об отмене из отдельного апдейта Telegram (worker/src/telegram/webhook.ts:
- * handleSubscriptionUpdate), а не инициирует её сам.
- */
+// Historical access is displayed only until the already paid period expires.
 export function YourAccess({ nav }: ScreenProps) {
   const payments = usePayments();
-  const [buyingId, setBuyingId] = useState<ProductId | null>(null);
 
   useEffect(() => {
     void payments.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleBuy = async (productId: ProductId) => {
-    setBuyingId(productId);
-    await payments.buyProduct(productId);
-    setBuyingId(null);
-  };
-
   const subscription = payments.entitlements?.subscription ?? null;
-  let subscriptionLine: string;
-  if (!subscription) {
-    subscriptionLine = 'Подписки нет.';
-  } else if (subscription.active && subscription.autoRenew) {
-    subscriptionLine = `Активна, автопродление ${formatDate(subscription.periodEnd)}.`;
-  } else if (subscription.active) {
-    subscriptionLine = `Активна до ${formatDate(subscription.periodEnd)} (автопродление отключено — управляется в Telegram).`;
-  } else {
-    subscriptionLine = `Истекла ${formatDate(subscription.periodEnd)}.`;
-  }
+  const subscriptionLine = subscription ? `До ${formatDate(subscription.periodEnd)}.${subscription.autoRenew ? ' Автопродление отключается; новый период не продаётся.' : ''}` : '';
 
   return (
     <div className="screen screen-your-access">
@@ -58,25 +35,23 @@ export function YourAccess({ nav }: ScreenProps) {
             ИИ-разборы: <strong>{payments.entitlements.freeAiReviewsRemaining}</strong> бесплатных,{' '}
             <strong>{payments.entitlements.paidAiReviews}</strong> купленных
           </p>
-          <p>Подписка: {subscriptionLine}</p>
+          {subscription?.active && <p>Ранее оплаченный доступ: {subscriptionLine}</p>}
         </div>
       )}
 
+      {!payments.loading && !payments.error && payments.products.length === 0 && <p className="muted">Оплата временно недоступна. Попробуйте обновить баланс позже.</p>}
       {payments.error && <p className="screen-error">{payments.error}</p>}
 
       <h2>Докупить</h2>
       <ul className="game-list">
-        {payments.products
-          .filter((product) => product.id !== 'subscription_unlimited' || !subscription?.active)
-          .map((product) => (
+        {payments.products.map((product) => (
             <li key={product.id} className="game-list-item">
               <div>
                 <strong>{product.title}</strong>
                 <div className="muted">{formatProductPrice(product)}</div>
               </div>
               <div className="game-list-actions">
-                <ProductPurchaseButton product={product} onBuyStars={() => { void handleBuy(product.id); }} disabled={buyingId !== null}
-                  label={buyingId === product.id ? 'Открываем оплату…' : 'Купить'} />
+                <ProductPurchaseButton product={product} />
               </div>
             </li>
           ))}

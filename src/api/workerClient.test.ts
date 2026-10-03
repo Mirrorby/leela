@@ -5,7 +5,6 @@ import {
   listGamesOnServer,
   getProductsFromServer,
   getEntitlementsFromServer,
-  createInvoiceOnServer,
   startAiReviewOnServer,
   getAiReviewFromServer,
   logClientAnalyticsEvent,
@@ -126,9 +125,9 @@ describe('workerClient', () => {
   });
 
   it('getProductsFromServer возвращает каталог продуктов', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ products: [{ id: 'game_1', stars: 79 }] }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ products: [{ id: 'game_1', tribute: { amount: 159, currency: 'USD', url: 'https://web.tribute.tg/p/FWC' } }] }));
     const products = await getProductsFromServer();
-    expect(products).toEqual([{ id: 'game_1', stars: 79 }]);
+    expect(products).toEqual([{ id: 'game_1', tribute: { amount: 159, currency: 'USD', url: 'https://web.tribute.tg/p/FWC' } }]);
   });
 
   it('getEntitlementsFromServer возвращает тело ответа как есть (без обёртки)', async () => {
@@ -137,13 +136,6 @@ describe('workerClient', () => {
     expect(entitlements.freeGamesRemaining).toBe(2);
   });
 
-  it('createInvoiceOnServer шлёт productId и возвращает invoiceUrl', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ invoiceUrl: 'https://t.me/invoice/x' }));
-    const url = await createInvoiceOnServer('game_5');
-    expect(url).toBe('https://t.me/invoice/x');
-    const [, init] = fetchSpy.mock.calls[0];
-    expect(JSON.parse(init?.body as string)).toEqual({ productId: 'game_5' });
-  });
 
   it('startAiReviewOnServer POST на .../analysis/start', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 'pending' }));

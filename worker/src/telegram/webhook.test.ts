@@ -1,7 +1,8 @@
+import { createPendingTransaction } from '../testUtils/legacyTransaction';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleTelegramWebhook, verifyWebhookSecret } from './webhook';
 import { createFakeD1 } from '../testUtils/fakeD1';
-import { createPendingTransaction, getTransactionById, getOrCreateUserBalance, getLatestSubscription } from '../payments/repository';
+import { getTransactionById, getOrCreateUserBalance, getLatestSubscription } from '../payments/repository';
 import { listAnalyticsEvents } from '../analytics/repository';
 
 const BOT_TOKEN = 'test-bot-token';
@@ -106,61 +107,18 @@ describe('handleTelegramWebhook', () => {
   });
 });
 
-describe('handleTelegramWebhook — pre_checkout_query (батч 3)', () => {
-  beforeEach(() => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-  });
+describe('retired Stars checkout', () => {
   afterEach(() => vi.restoreAllMocks());
-
-  it('валидный запрос — answerPreCheckoutQuery с ok:true', async () => {
+  it('rejects even a valid historical invoice without changing its transaction', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const db = createFakeD1();
     const tx = await createPendingTransaction(db, '555', 'game_1');
-
-    const request = req(
-      {
-        update_id: 10,
-        pre_checkout_query: { id: 'pcq-1', from: { id: 555 }, currency: 'XTR', total_amount: tx.stars_amount, invoice_payload: tx.id },
-      },
-      WEBHOOK_SECRET
-    );
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, db);
-    expect(res.status).toBe(200);
-
-    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(String(url)).toBe(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`);
-    const sentBody = JSON.parse((init as RequestInit).body as string);
-    expect(sentBody.pre_checkout_query_id).toBe('pcq-1');
-    expect(sentBody.ok).toBe(true);
-  });
-
-  it('неизвестный invoice_payload — ok:false, не 500', async () => {
-    const db = createFakeD1();
-    const request = req(
-      {
-        update_id: 11,
-        pre_checkout_query: { id: 'pcq-2', from: { id: 555 }, currency: 'XTR', total_amount: 79, invoice_payload: 'no-such-tx' },
-      },
-      WEBHOOK_SECRET
-    );
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, db);
-    expect(res.status).toBe(200);
-    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(JSON.parse((init as RequestInit).body as string).ok).toBe(false);
-  });
-
-  it('сумма в запросе не совпадает со stars_amount транзакции — ok:false (защита от подделки)', async () => {
-    const db = createFakeD1();
-    const tx = await createPendingTransaction(db, '555', 'game_1');
-    const request = req(
-      {
-        update_id: 12,
-        pre_checkout_query: { id: 'pcq-3', from: { id: 555 }, currency: 'XTR', total_amount: 1, invoice_payload: tx.id },
-      },
-      WEBHOOK_SECRET
-    );
-    await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, db);
-    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(JSON.parse((init as RequestInit).body as string).ok).toBe(false);
+    const response = await handleTelegramWebhook(req({ update_id: 10, pre_checkout_query: {
+      id: 'old-invoice', from: { id: 555 }, currency: 'XTR', total_amount: tx.stars_amount, invoice_payload: tx.id,
+    } }, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, db);
+    expect(response.status).toBe(200);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toMatchObject({ ok: false });
+    expect((await getTransactionById(db, tx.id))?.status).toBe('created');
   });
 });
 
@@ -444,7 +402,7 @@ describe('handleTelegramWebhook — аналитика §26 (батч 5)', () =>
     expect(events.map((e) => e.event)).toEqual(['subscription_renewed']);
   });
 
-  it('pre_checkout_query отклонён (сумма не совпадает) — логирует payment_failed', async () => {
+  it('отключённый Stars checkout не входит в воронку новых покупок', async () => {
     const db = createFakeD1();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const tx = await createPendingTransaction(db, '804', 'game_1');
@@ -454,7 +412,7 @@ describe('handleTelegramWebhook — аналитика §26 (батч 5)', () =>
     );
     await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, db);
     const events = await listAnalyticsEvents(db, '804');
-    expect(events.map((e) => e.event)).toEqual(['payment_failed']);
+    expect(events.map((e) => e.event)).toEqual([]);
   });
 
   it('state: "canceled" — логирует subscription_cancelled', async () => {

@@ -3,9 +3,8 @@ import type { Product } from '../types/payments';
 import { getWebApp } from '../telegram/telegramAdapter';
 
 export function formatProductPrice(product: Product): string {
-  if (!product.tribute) return `${product.stars} ⭐`;
+  if (!product.tribute) return 'Оплата временно недоступна';
   const { amount, currency } = product.tribute;
-  if (currency === 'XTR') return `${amount} ⭐`;
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount / 100);
 }
 
@@ -13,11 +12,10 @@ interface PurchaseProps {
   product: Product;
   disabled?: boolean;
   label?: string;
-  onBuyStars: () => void;
 }
 
-export function ProductPurchaseButton({ product, disabled = false, label = 'Купить', onBuyStars }: PurchaseProps) {
-  if (!product.tribute) return <button className="primary" disabled={disabled} onClick={onBuyStars}>{label}</button>;
+export function ProductPurchaseButton({ product, disabled = false, label = 'Купить' }: PurchaseProps) {
+  if (!product.tribute) return <button className="primary" disabled>Оплата недоступна</button>;
   const url = product.tribute.url;
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (disabled) {

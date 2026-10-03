@@ -52,7 +52,7 @@ function parseMappings(raw: string): Map<number, Mapping> {
       throw new Error('invalid Tribute product mapping');
     }
     const currency = value.currency.toUpperCase();
-    if (!['RUB', 'EUR', 'USD', 'XTR'].includes(currency)) throw new Error('invalid Tribute currency');
+    if (!['RUB', 'EUR', 'USD'].includes(currency)) throw new Error('invalid Tribute currency');
     mappings.set(Number(id), { product, amount: value.amount, currency });
   }
   return mappings;
@@ -61,7 +61,7 @@ function parseMappings(raw: string): Map<number, Mapping> {
 /** The UI uses the same price and product mapping as webhook verification. */
 export function listProductsWithTribute(env: TributeEnv): Product[] {
   const products = listProducts();
-  if (!env.TRIBUTE_API_KEY || !env.TRIBUTE_PRODUCTS) return products;
+  if (!env.TRIBUTE_API_KEY || !env.TRIBUTE_PRODUCTS) return [];
   const offers = new Map<string, NonNullable<Product['tribute']>>();
   for (const [id, mapping] of parseMappings(env.TRIBUTE_PRODUCTS)) {
     // Tribute's public product links use this base-62 alphabet (FWC = 161238).
@@ -78,7 +78,7 @@ export function listProductsWithTribute(env: TributeEnv): Product[] {
       currency: mapping.currency,
     });
   }
-  return products.map((product) => offers.has(product.id) ? { ...product, tribute: offers.get(product.id)! } : product);
+  return products.filter((product) => offers.has(product.id)).map((product) => ({ ...product, tribute: offers.get(product.id)! }));
 }
 
 async function readBody(request: Request): Promise<Uint8Array | null> {

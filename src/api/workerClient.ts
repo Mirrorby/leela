@@ -1,5 +1,5 @@
 import type { DiceMode, GameState, RollEvent } from '../types/game';
-import type { Product, ProductId, Entitlements } from '../types/payments';
+import type { Product, Entitlements } from '../types/payments';
 import { getInitData } from '../telegram/telegramAdapter';
 
 // Публичный (не секретный) адрес Worker'а — одинаковый для всех пользователей,
@@ -150,15 +150,6 @@ export async function getEntitlementsFromServer(): Promise<Entitlements> {
   return apiFetch<Entitlements>('/api/v1/entitlements');
 }
 
-/** Возвращает ссылку на оплату Stars — открывается через
- * telegramAdapter.openInvoice(), не напрямую (см. usePayments.ts). */
-export async function createInvoiceOnServer(productId: ProductId): Promise<string> {
-  const result = await apiFetch<{ invoiceUrl: string }>('/api/v1/payments/invoice', {
-    method: 'POST',
-    body: JSON.stringify({ productId }),
-  });
-  return result.invoiceUrl;
-}
 
 export interface AiReviewStatus {
   status: 'none' | 'pending' | 'ready' | 'failed';

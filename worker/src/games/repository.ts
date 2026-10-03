@@ -1,4 +1,6 @@
 import type { GameState, GameStatus, DiceMode, Roll, Turn } from '../types/game';
+import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from '../payments/catalog';
+import { InsufficientBalanceError, type GameChargeSource } from '../payments/repository';
 
 /**
  * Форма строки таблицы games ровно как в БД (см. worker/migrations/).
@@ -123,6 +125,57 @@ export async function getGameByClientRequestId(db: D1Database, telegramId: strin
     .bind(telegramId, clientRequestId)
     .first<GameRow>();
   return row ? rowToGameState(row) : null;
+}
+
+/** D1 batches are transactions: the game and its debit commit or roll back
+ * together. All eligibility checks run inside the batch, without a stale
+ * balance read. Only the newly inserted UUID can authorize the debit;
+ * a duplicate clientRequestId returns the existing game without charging.
+ * Keep the debit immediately after INSERT: changes() checks that INSERT's
+ * result, including retries where an internal caller reused the UUID. */
+export async function createGameWithCharge(
+  db: D1Database, game: GameState, telegramId: string, clientRequestId: string
+): Promise<{ game: GameState; created: boolean; source: GameChargeSource | null }> {
+  const p = gameStateToRowParams(game, telegramId);
+  const now = Date.now();
+  const activeSubscription = 'EXISTS (SELECT 1 FROM subscriptions WHERE telegram_id = ? AND period_end > ?)';
+  const result = await db.batch([
+    db.prepare(`INSERT INTO user_balances
+      (telegram_id, free_games_remaining, free_ai_reviews_remaining, paid_games, paid_ai_reviews, version, created_at, updated_at)
+      VALUES (?, ?, ?, 0, 0, 1, ?, ?) ON CONFLICT(telegram_id) DO NOTHING`)
+      .bind(telegramId, FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT, now, now),
+    db.prepare(`SELECT CASE WHEN ${activeSubscription} THEN 'subscription'
+      WHEN free_games_remaining > 0 THEN 'free' WHEN paid_games > 0 THEN 'paid' ELSE NULL END AS source
+      FROM user_balances WHERE telegram_id = ?`).bind(telegramId, now, telegramId),
+    db.prepare(`INSERT INTO games
+      (id, telegram_id, status, ruleset_id, ruleset_version, dice_mode, current_cell, is_born,
+       rolls_json, turns_json, created_at, updated_at, consecutive_sixes, position_before_six_series,
+       request, version, client_request_id)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?
+      FROM user_balances WHERE telegram_id = ?
+        AND (free_games_remaining > 0 OR paid_games > 0 OR ${activeSubscription})
+        AND NOT EXISTS (SELECT 1 FROM games WHERE telegram_id = ? AND client_request_id = ?)
+      ON CONFLICT DO NOTHING`)
+      .bind(p.id, p.telegram_id, p.status, p.ruleset_id, p.ruleset_version, p.dice_mode,
+        p.current_cell, p.is_born, p.rolls_json, p.turns_json, p.created_at, p.updated_at,
+        p.consecutive_sixes, p.position_before_six_series, p.request, clientRequestId,
+        telegramId, telegramId, now, telegramId, clientRequestId),
+    db.prepare(`UPDATE user_balances SET
+      free_games_remaining = free_games_remaining - CASE WHEN free_games_remaining > 0 THEN 1 ELSE 0 END,
+      paid_games = paid_games - CASE WHEN free_games_remaining = 0 THEN 1 ELSE 0 END,
+      version = version + 1, updated_at = ?
+      WHERE changes() = 1 AND telegram_id = ? AND EXISTS (SELECT 1 FROM games WHERE id = ? AND telegram_id = ?)
+        AND NOT ${activeSubscription}`)
+      .bind(now, telegramId, game.id, telegramId, telegramId, now),
+    db.prepare('SELECT * FROM games WHERE telegram_id = ? AND client_request_id = ?')
+      .bind(telegramId, clientRequestId),
+  ]);
+  const row = result[4].results?.[0] as unknown as GameRow | undefined;
+  if (!row) throw new InsufficientBalanceError();
+  const created = (result[2].meta.changes ?? 0) > 0;
+  const sourceRow = result[1].results?.[0] as { source: GameChargeSource | null } | undefined;
+  const source = created ? sourceRow?.source ?? null : null;
+  return { game: rowToGameState(row), created, source };
 }
 
 /**

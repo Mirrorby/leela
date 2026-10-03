@@ -85,14 +85,14 @@ describe('Tribute payments', () => {
     ] as const) {
       expect(products.find((product) => product.id === id)?.tribute).toEqual({ url: `https://web.tribute.tg/p/${code}`, amount, currency: 'USD' });
     }
-    expect(products.find((product) => product.id === 'subscription_unlimited')?.tribute).toBeUndefined();
+    expect(products.map((product) => product.id)).not.toContain('subscription_unlimited');
     expect(products.map(({ tribute: _tribute, ...product }) => product)).toEqual(listProducts());
     expect(listProducts().every((product) => !product.tribute)).toBe(true);
     expect(JSON.stringify(products)).not.toContain(secret);
     env.TRIBUTE_PRODUCTS = '{}';
-    expect(listProductsWithTribute(env)).toEqual(listProducts());
+    expect(listProductsWithTribute(env)).toEqual([]);
     delete env.TRIBUTE_API_KEY;
-    expect(listProductsWithTribute(env)).toEqual(listProducts());
+    expect(listProductsWithTribute(env)).toEqual([]);
   });
 
   it('routes signed payment through the Worker and credits the existing entitlements', async () => {

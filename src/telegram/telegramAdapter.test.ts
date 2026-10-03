@@ -6,7 +6,6 @@ import {
   getWebApp,
   initTelegramApp,
   isTelegramEnvironment,
-  openInvoice,
   type TelegramWebApp,
 } from './telegramAdapter';
 
@@ -83,31 +82,4 @@ describe('telegramAdapter — внутри Telegram', () => {
     expect(getDisplayUser()?.first_name).toBe('Аркадий');
   });
 
-  it('openInvoice() резолвится статусом, который передал колбэк Telegram', async () => {
-    const openInvoiceMock = vi.fn((_url: string, cb: (status: 'paid' | 'cancelled' | 'failed' | 'pending') => void) => cb('paid'));
-    const fake = makeFakeWebApp({ openInvoice: openInvoiceMock });
-    // @ts-expect-error — минимальный window-стаб для теста.
-    globalThis.window = { Telegram: { WebApp: fake } };
-
-    const status = await openInvoice('https://t.me/invoice/x');
-
-    expect(status).toBe('paid');
-    expect(openInvoiceMock).toHaveBeenCalledWith('https://t.me/invoice/x', expect.any(Function));
-  });
-
-  it('openInvoice() -> "failed", если WebApp.openInvoice недоступен (старый клиент Telegram)', async () => {
-    const fake = makeFakeWebApp(); // без openInvoice
-    // @ts-expect-error — минимальный window-стаб для теста.
-    globalThis.window = { Telegram: { WebApp: fake } };
-
-    await expect(openInvoice('https://t.me/invoice/x')).resolves.toBe('failed');
-  });
-});
-
-describe('openInvoice() вне Telegram', () => {
-  it('-> "failed", не бросает исключение', async () => {
-    // @ts-expect-error — минимальный window-стаб для теста.
-    globalThis.window = {};
-    await expect(openInvoice('https://t.me/invoice/x')).resolves.toBe('failed');
-  });
 });

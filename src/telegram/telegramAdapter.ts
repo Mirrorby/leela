@@ -88,13 +88,7 @@ export interface TelegramWebApp {
   setHeaderColor?: (color: string) => void;
   /** Красит фон под safe area (например, за системными кнопками). */
   setBackgroundColor?: (color: string) => void;
-  /** Батч 6 (монетизация) — открывает нативный экран оплаты Telegram Stars
-   * поверх Mini App, не покидая его. status приходит от самого Telegram
-   * СИНХРОННО с закрытием экрана оплаты — это UI-сигнал с клиента, НЕ
-   * подтверждение начисления (источник истины — вебхук successful_payment
-   * на сервере, см. usePayments.ts:buyProduct). */
-  openInvoice?: (url: string, callback: (status: 'paid' | 'cancelled' | 'failed' | 'pending') => void) => void;
-  /** Opens an external HTTPS checkout in the user's browser. */
+    /** Opens an external HTTPS checkout in the user's browser. */
   openLink?: (url: string) => void;
 }
 
@@ -157,23 +151,4 @@ export function getInitData(): string {
  */
 export function getDisplayUser(): TelegramWebAppUser | null {
   return getWebApp()?.initDataUnsafe.user ?? null;
-}
-
-export type InvoiceStatus = 'paid' | 'cancelled' | 'failed' | 'pending';
-
-/**
- * Промисифицированная обёртка над WebApp.openInvoice (единственное место в
- * приложении, где вызывается этот метод SDK — см. шапку файла). Если
- * openInvoice недоступен (старый клиент Telegram или обычный браузер) —
- * возвращает 'failed', а не бросает исключение: вызывающий код (usePayments)
- * и так одинаково обрабатывает 'failed' как "не получилось, покажи ошибку".
- */
-export function openInvoice(url: string): Promise<InvoiceStatus> {
-  const webApp = getWebApp();
-  if (!webApp?.openInvoice) {
-    return Promise.resolve('failed');
-  }
-  return new Promise((resolve) => {
-    webApp.openInvoice!(url, (status) => resolve(status));
-  });
 }

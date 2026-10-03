@@ -34,7 +34,6 @@ export function Summary({ session, nav }: ScreenProps) {
   const [aiState, setAiState] = useState<AiState>('checking');
   const [aiContent, setAiContent] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [buyingReview, setBuyingReview] = useState(false);
   const offerShownLoggedRef = useRef(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -126,17 +125,6 @@ export function Summary({ session, nav }: ScreenProps) {
     }
   };
 
-  const handleBuyReview = async () => {
-    setBuyingReview(true);
-    const status = await payments.buyProduct('ai_review_1');
-    setBuyingReview(false);
-    if (status === 'paid') {
-      await handleGetReview();
-    }
-    // 'cancelled'/'failed' — остаёмся в состоянии 'locked', пользователь
-    // может попробовать снова.
-  };
-
   return (
     <div className="screen screen-summary">
       <h1>Итог партии</h1>
@@ -169,8 +157,7 @@ export function Summary({ session, nav }: ScreenProps) {
             {payments.entitlements?.canStartAiReview ? (
               <button className="primary" onClick={handleGetReview}>Получить ИИ-разбор</button>
             ) : reviewProduct ? (
-              <ProductPurchaseButton product={reviewProduct} onBuyStars={() => { void handleBuyReview(); }} disabled={buyingReview}
-                label={buyingReview ? 'Открываем оплату…' : `Купить разбор — ${formatProductPrice(reviewProduct)}`} />
+              <ProductPurchaseButton product={reviewProduct} label={`Купить разбор — ${formatProductPrice(reviewProduct)}`} />
             ) : <button onClick={() => { void payments.refresh(); }} disabled={payments.loading}>
               {payments.loading ? 'Загружаем цену…' : 'Загрузить варианты оплаты'}
             </button>}
