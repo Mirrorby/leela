@@ -1,7 +1,7 @@
 import type { DiceMode, GameState, RollEvent } from '../types/game';
 import { createGameOnServer, getGameFromServer, rollOnServer, WorkerApiError } from '../api/workerClient';
 import { getStorageOwner, setStorageOwner } from '../storage/localStorage';
-import { isSessionSnapshot, loadPersistedGame, persistGame, snapshotFromServer, removePersistedGame, setActivePersistedGameId, type PersistedGame } from './persistence';
+import { isSessionSnapshot, loadPersistedGame, persistGame, snapshotFromServer, resumeGameSnapshot, removePersistedGame, setActivePersistedGameId, type PersistedGame } from './persistence';
 import { canUseOfflineCache } from './recoverSession';
 
 export interface LastMove { fromCell: number; landedCell: number; finalCell: number; }
@@ -79,7 +79,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         try {
           const game = await api.get(gameId);
           requireCurrent(operation);
-          record = snapshotFromServer(game, cached);
+          record = resumeGameSnapshot(snapshotFromServer(game, cached));
         } catch (error) {
           requireCurrent(operation);
           if (error instanceof WorkerApiError && [401, 403, 404].includes(error.status)) {
@@ -89,7 +89,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
             throw error;
           }
           if (!cached || !operation.owner || !canUseOfflineCache(error)) throw error;
-          record = cached;
+          record = resumeGameSnapshot(cached);
         }
         requireCurrent(operation);
         epoch++; revision++;

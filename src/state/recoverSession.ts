@@ -1,6 +1,6 @@
 import { getAccountFromServer, getGameFromServer, WorkerApiError } from '../api/workerClient';
 import { setStorageOwner, getStorageOwner, getLegacyActiveGameId, clearLegacyActiveGameId } from '../storage/localStorage';
-import { getActivePersistedGameId, loadPersistedGame, persistGame, removePersistedGame, setActivePersistedGameId, snapshotFromServer } from './persistence';
+import { getActivePersistedGameId, loadPersistedGame, persistGame, removePersistedGame, setActivePersistedGameId, snapshotFromServer, resumeGameSnapshot } from './persistence';
 import type { PersistedGame } from './persistence';
 
 export function canUseOfflineCache(error: unknown): boolean {
@@ -27,7 +27,7 @@ export async function recoverSession(
     // Even a corrupt/missing local snapshot can be restored by its active ID.
     const game = await api.game(id);
     if (!isCurrent() || getStorageOwner() !== account.telegramId) return null;
-    const record = snapshotFromServer(game, cached);
+    const record = resumeGameSnapshot(snapshotFromServer(game, cached));
     persistGame(record);
     setActivePersistedGameId(game.id);
     if (legacyId) clearLegacyActiveGameId();
@@ -35,7 +35,7 @@ export async function recoverSession(
   } catch (error) {
     if (!isCurrent() || getStorageOwner() !== account.telegramId) return null;
     if (cached && canUseOfflineCache(error)) {
-      return { record: cached, notice: 'Нет связи с сервером — открыта сохранённая копия партии. Броски станут доступны после восстановления соединения.' };
+      return { record: resumeGameSnapshot(cached), notice: 'Нет связи с сервером — открыта сохранённая копия партии. Броски станут доступны после восстановления соединения.' };
     }
     if (error instanceof WorkerApiError && [401, 403, 404].includes(error.status)) {
       if (ownedId) removePersistedGame(ownedId);

@@ -4,7 +4,7 @@ import {
   persistGame,
   setActivePersistedGameId,
 } from './state/persistence';
-import { resolveGameScreen, normalizeScreenName } from './state/resolveGameScreen';
+import { resolveGameScreen, gameResumeScreen } from './state/resolveGameScreen';
 import { recoverSession } from './state/recoverSession';
 import { WorkerApiError } from './api/workerClient';
 import type { NavigationActions, ScreenEntry, ScreenName } from './navigation/types';
@@ -15,15 +15,8 @@ import { useTelegramViewport } from './telegram/useTelegramViewport';
 import { useTelegramBackButton } from './telegram/useTelegramBackButton';
 import './App.css';
 
-// Восстановление старых сохранённых партий и нормализация имени экрана —
-// см. state/resolveGameScreen.ts:normalizeScreenName (используется здесь и
-// в MyGames.tsx при "Продолжить" — общая точка, не дублируем логику).
-//
-// Этап 3: минимальный UI-каркас, собственный стек экранов (react-router
-// сознательно не используется). Этап 4: партия переживает закрытие вкладки —
-// на каждое изменение сессии/экрана пишем снимок в localStorage, при
-// загрузке приложения восстанавливаем ровно тот экран, на котором
-// остановились (не всегда на Splash).
+// On restart and Continue, resume the board or the completed game's
+// summary. Global menus and History cannot be a game's root screen.
 function App() {
   const session = useGameSession();
   const [stack, setStack] = useState<ScreenEntry[]>([{ name: 'Splash' }]);
@@ -50,7 +43,7 @@ function App() {
         if (!current || !result) return;
         if (result.record) {
           session.restore(result.record);
-          setStack([{ name: resolveGameScreen(normalizeScreenName(result.record.screen), result.record.game) }]);
+          setStack([{ name: gameResumeScreen(result.record.game) }]);
         } else {
           session.reset();
           setStack([{ name: 'Splash' }]);
@@ -92,9 +85,8 @@ function App() {
   // навигация в приложении — видна ровно когда есть куда возвращаться.
   useTelegramBackButton(stack.length > 1, pop);
 
-  // Снимок сессии на каждое изменение партии/экрана/результата броска — это
-  // и есть "закрыл вкладку посреди хода — восстановилось точно там же":
-  // сохраняется не только GameState, но и текущий экран с последним броском.
+  // Persist progress and roll hints while keeping navigation-only screens
+  // out of the game snapshot. A restart confirms progress with the server.
   useEffect(() => {
     if (!hydrated || !session.game) return;
     persistGame({

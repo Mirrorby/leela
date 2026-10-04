@@ -9,7 +9,7 @@ import {
   setActivePersistedGameId,
   hidePersistedGame,
 } from '../state/persistence';
-import { resolveGameScreen, normalizeScreenName } from '../state/resolveGameScreen';
+import { gameResumeScreen } from '../state/resolveGameScreen';
 
 const STATUS_LABELS: Record<string, string> = {
   WAITING_FOR_BIRTH: 'ждёт рождения',
@@ -29,8 +29,8 @@ const PAGE_SIZE = 20;
  * оставались целы в D1 и были доступны через GET /api/v1/games. Заодно вся
  * проделанная работа над серверной keyset-пагинацией была мертва — клиент её
  * просто не вызывал. Теперь сервер — основной источник; локальный кэш служит
- * (а) подсказкой, на какой именно экран вести "Продолжить", и (б) офлайн-
- * фолбэком, если сервер недоступен.
+ * офлайн-фолбэком, если сервер недоступен. «Продолжить» открывает доску
+ * незавершённой партии или итог завершённой, независимо от меню в кэше.
  */
 export function MyGames({ session, nav }: ScreenProps) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
@@ -117,7 +117,7 @@ export function MyGames({ session, nav }: ScreenProps) {
     setListError(null);
     try {
       const record = await session.openGame(entry.id);
-      if (generationRef.current === generation) nav.resetTo(resolveGameScreen(normalizeScreenName(record.screen), record.game));
+      if (generationRef.current === generation) nav.resetTo(gameResumeScreen(record.game));
     } catch (error) {
       if (generationRef.current !== generation || error instanceof SessionSupersededError) return;
       accessDenied(error);

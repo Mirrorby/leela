@@ -35,7 +35,9 @@ export function isGameState(value: unknown): value is GameState {
     return value.rulesetVersion === ruleset.version
       && integer(value.currentCell, 0, size)
       && integer(value.positionBeforeSixSeries, 0, size)
-      && integer(value.consecutiveSixes, 0, ruleset.sixRule.consecutiveLimit)
+      // consecutiveLimit is the exact count that burns on a non-six,
+      // not a maximum: four or more sixes cancel that reset (see engine).
+      && integer(value.consecutiveSixes, 0, Number.MAX_SAFE_INTEGER)
       && Array.isArray(value.currentTurnRolls) && value.currentTurnRolls.every(isRoll)
       && Array.isArray(value.turns) && value.turns.every((turn: unknown) => isObject(turn)
         && isNonEmptyString(turn.id) && isNonEmptyString(turn.clientEventId)
