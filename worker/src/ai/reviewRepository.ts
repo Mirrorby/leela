@@ -1,7 +1,7 @@
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from '../payments/catalog';
 import { InsufficientBalanceError } from '../payments/repository';
 import { ensureFreeGamePolicy } from '../payments/freeGamePolicy';
-import { publicAiReview, REVIEW_FORMAT, type ReviewKind } from './reviewFormat';
+import { publicAiReview, REVIEW_FORMAT, type ReviewKind, type ReviewLanguage } from './reviewFormat';
 
 // Longer than the provider timeout, including persistence. A killed Worker
 // leaves a recoverable reservation rather than a permanently spent credit.
@@ -29,7 +29,7 @@ export async function getAiReview(db: D1Database, gameId: string): Promise<AiRev
  * Keep the debit directly after the upsert: changes() belongs to that write.
  * A pending/ready review is returned even when the balance is exhausted. */
 export async function reserveAiReview(
-  db: D1Database, gameId: string, telegramId: string, kind?: ReviewKind
+  db: D1Database, gameId: string, telegramId: string, kind?: ReviewKind, language: ReviewLanguage = 'ru'
 ): Promise<{ review: AiReviewRow; started: boolean; view: ReturnType<typeof publicAiReview> }> {
   const now = Date.now();
   await ensureFreeGamePolicy(db);
@@ -47,17 +47,18 @@ export async function reserveAiReview(
     db.prepare(`INSERT INTO ai_reviews
       (game_id, telegram_id, status, charged_from, content, error, created_at, updated_at)
       SELECT ?, ?, 'pending', ${source},
-        json_object('format', ?, 'kind', ${requestedKind}, 'shortContent', NULL, 'fullContent', NULL), NULL, ?, ? FROM user_balances
+        json_object('format', ?, 'kind', ${requestedKind}, 'shortContent', NULL, 'fullContent', NULL, 'language', ?, 'shortLanguage', CASE WHEN ${requestedKind} = 'short' THEN ? ELSE NULL END), NULL, ?, ? FROM user_balances
       WHERE telegram_id = ? AND ${budget}
       ON CONFLICT(game_id) DO UPDATE SET status = 'pending', charged_from = excluded.charged_from,
         content = json_object('format', ?, 'kind', json_extract(excluded.content, '$.kind'),
-          'shortContent', ${storedShort}, 'fullContent', NULL),
+          'shortContent', ${storedShort}, 'fullContent', NULL, 'language', json_extract(excluded.content, '$.language'),
+          'shortLanguage', CASE WHEN ${storedShort} IS NOT NULL THEN COALESCE(json_extract(ai_reviews.content, '$.shortLanguage'), 'ru') ELSE json_extract(excluded.content, '$.shortLanguage') END),
         error = NULL, updated_at = MAX(ai_reviews.updated_at + 1, excluded.updated_at)
       WHERE ai_reviews.telegram_id = excluded.telegram_id
         AND (ai_reviews.status = 'failed' OR (ai_reviews.status = 'ready'
           AND ${storedFormat} = ? AND ${storedKind} = 'short' AND json_extract(excluded.content, '$.kind') = 'full'))
         AND NOT (json_extract(excluded.content, '$.kind') = 'short' AND ${storedShort} IS NOT NULL)`)
-      .bind(gameId, telegramId, REVIEW_FORMAT, now, now, telegramId, REVIEW_FORMAT, REVIEW_FORMAT),
+      .bind(gameId, telegramId, REVIEW_FORMAT, language, language, now, now, telegramId, REVIEW_FORMAT, REVIEW_FORMAT),
     db.prepare(`UPDATE user_balances SET
       free_ai_reviews_remaining = free_ai_reviews_remaining - CASE WHEN
         (SELECT charged_from FROM ai_reviews WHERE game_id = ?) = 'free' THEN 1 ELSE 0 END,

@@ -1,3 +1,4 @@
+import { setLanguagePreference } from '../i18n/language';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createGameOnServer,
@@ -21,6 +22,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe('workerClient', () => {
   beforeEach(() => {
+    setLanguagePreference('ru');
     vi.spyOn(telegramAdapter, 'getInitData').mockReturnValue('auth_date=1&user=%7B%22id%22%3A1%7D&hash=abc');
   });
 
@@ -88,7 +90,7 @@ describe('workerClient', () => {
     await expect(rollOnServer('missing', 'evt-1')).rejects.toMatchObject({
       name: 'WorkerApiError',
       status: 404,
-      message: 'not_found',
+      message: 'Партия недоступна. Откройте «Мои партии» или перезапустите игру через Telegram.',
     });
   });
 
@@ -148,13 +150,13 @@ describe('workerClient', () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(String(url)).toContain('/api/v1/games/game-1/analysis/start');
     expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual({ kind: 'short' });
+    expect(JSON.parse(init?.body as string)).toEqual({ kind: 'short', language: 'ru' });
   });
 
   it('requests full analysis explicitly', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 'pending', kind: 'full' }));
     await startAiReviewOnServer('g1', 'full');
-    expect(JSON.parse(spy.mock.calls[0][1]!.body as string)).toEqual({ kind: 'full' });
+    expect(JSON.parse(spy.mock.calls[0][1]!.body as string)).toEqual({ kind: 'full', language: 'ru' });
   });
   it('validates verified account identity', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ telegramId: '111' }));

@@ -984,6 +984,26 @@ describe('монетизация (батч 4) — ИИ-разбор партии
     return created.game.id as string;
   }
 
+  it('validates language before charging and uses English generation without recharging a cached review', async () => {
+    const auth = await authHeaderFor(40202);
+    const gameId = await createFinishedGame(auth, 40202);
+    const start = (language: unknown) => worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, {
+      method: 'POST', headers: { Authorization: auth }, body: JSON.stringify({ kind: 'short', language }),
+    }), env, fakeCtx);
+    for (const language of ['fr', null, 42]) expect((await start(language)).status).toBe(400);
+    expect((await getOrCreateUserBalance(env.DB, '40202')).free_ai_reviews_remaining).toBe(1);
+    const provider = vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiOk('English review'));
+    expect((await start('en')).status).toBe(202);
+    await flushWaitUntil();
+    const payload = JSON.parse(provider.mock.calls[0][1]!.body as string);
+    expect(JSON.stringify(payload)).toContain('in English');
+    const cached = await start('ru');
+    expect(cached.status).toBe(200);
+    expect(await readJson(cached)).toMatchObject({ language: 'en', content: 'English review' });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect((await getOrCreateUserBalance(env.DB, '40202')).free_ai_reviews_remaining).toBe(0);
+  });
+
   it('validates the tier before charging; full requires payment and keeps the free short review', async () => {
     const auth = await authHeaderFor(40201);
     const gameId = await createFinishedGame(auth, 40201);

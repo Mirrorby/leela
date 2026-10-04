@@ -8,7 +8,7 @@ import { getEntitlements, trackSubscriptionExpiryIfNeeded, InsufficientBalanceEr
 import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './payments/tribute';
 import { retireStarsRenewals } from './payments/retireStars';
 import { getRecoverableAiReview, reserveAiReview, markAiReviewReady, failAiReviewAndRefund, recoverExpiredAiReviews } from './ai/reviewRepository';
-import { publicAiReview, type ReviewKind } from './ai/reviewFormat';
+import { publicAiReview, type ReviewKind, type ReviewLanguage } from './ai/reviewFormat';
 import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
 import { logAnalyticsEvent } from './analytics/repository';
@@ -207,10 +207,10 @@ async function logAiEvent(env: Env, telegramId: string, event: 'free_ai_used' | 
 /** Fast background work is bounded below waitUntil's 30-second lifetime.
  * Persistent reservations are recovered on read/start and by cron if the
  * isolate is terminated. Only this attempt may settle or refund its credit. */
-async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, attempt: number, kind: ReviewKind): Promise<void> {
+async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, attempt: number, kind: ReviewKind, language: ReviewLanguage): Promise<void> {
   let saved: boolean;
   try {
-    const text = await generateReview(env.GEMINI_API_KEY, buildReviewPrompt(game, kind), kind);
+    const text = await generateReview(env.GEMINI_API_KEY, buildReviewPrompt(game, kind, language), kind);
     saved = await markAiReviewReady(env.DB, game.id, attempt, text);
   } catch {
     await failAiReviewAndRefund(env.DB, game.id, attempt);
@@ -233,17 +233,20 @@ async function handleStartAiReview(request: Request, env: Env, ctx: ExecutionCon
   }
 
   let kind: ReviewKind = 'short';
+  let language: ReviewLanguage = 'ru';
   const raw = await request.text();
   if (raw) {
     let body;
     try { body = JSON.parse(raw); } catch { return json({ error: 'invalid_body' }, { status: 400 }); }
     if (body?.kind !== 'short' && body?.kind !== 'full') return json({ error: 'invalid_review_kind' }, { status: 400 });
     kind = body.kind;
+    if (body.language !== undefined && body.language !== 'ru' && body.language !== 'en') return json({ error: 'invalid_review_language' }, { status: 400 });
+    language = body.language ?? 'ru';
   }
   await getRecoverableAiReview(env.DB, gameId);
   let reservation;
   try {
-    reservation = await reserveAiReview(env.DB, gameId, auth.telegramId, kind);
+    reservation = await reserveAiReview(env.DB, gameId, auth.telegramId, kind, language);
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
       return json({
@@ -261,7 +264,7 @@ async function handleStartAiReview(request: Request, env: Env, ctx: ExecutionCon
   }
 
   // Schedule first: an analytics failure must not strand a reservation.
-  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, review.updated_at, kind).catch(() => {
+  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, review.updated_at, kind, language).catch(() => {
     console.warn('AI attempt settlement failed; reservation remains recoverable');
   }));
   ctx.waitUntil((async () => {

@@ -1,8 +1,9 @@
+import { tr } from '../i18n/language';
 import { useEffect, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { usePayments } from '../state/usePayments';
 import type { ProductId } from '../types/payments';
-import { formatProductPrice, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
+import { formatProductPrice, productTitle, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
 
 /** §6 ТЗ ("Основной paywall") — пакеты партий Tribute. game_ai_combo
  * включён сюда же (не в апселл ИИ-разбора на Summary) — §5 ТЗ: "комбо
@@ -35,23 +36,23 @@ export function Paywall({ session, nav }: ScreenProps) {
       await session.startGame();
       nav.resetTo('GameHome');
     } catch {
-      setMessage('Не удалось создать партию — попробуйте ещё раз.');
+      setMessage(tr("Не удалось создать партию — попробуйте ещё раз."));
     }
   };
 
   return (
     <div className="screen screen-paywall">
-      <h1>Партии закончились</h1>
-      <p className="muted">Бесплатные и купленные партии закончились — выберите один из вариантов ниже.</p>
+      <h1>{tr("Партии закончились")}</h1>
+      <p className="muted">{tr("Бесплатные и купленные партии закончились — выберите один из вариантов ниже.")}</p>
 
-      {payments.loading && !payments.entitlements && <p className="muted">Загрузка…</p>}
+      {payments.loading && !payments.entitlements && <p className="muted">{tr("Загрузка…")}</p>}
 
       {gameProducts.length > 0 && (
         <ul className="game-list">
           {gameProducts.map((product) => (
             <li key={product.id} className="game-list-item">
               <div>
-                <strong>{product.title}</strong>
+                <strong>{productTitle(product)}</strong>
                 <div className="muted">{formatProductPrice(product)}</div>
               </div>
               <div className="game-list-actions">
@@ -66,15 +67,13 @@ export function Paywall({ session, nav }: ScreenProps) {
 
       {message && <p className="screen-error">{message}</p>}
       {session.error && <p className="screen-error">{session.error}</p>}
-      {!payments.loading && !payments.error && payments.products.length === 0 && <p className="muted">Оплата временно недоступна. Попробуйте обновить баланс позже.</p>}
+      {!payments.loading && !payments.error && payments.products.length === 0 && <p className="muted">{tr("Оплата временно недоступна. Попробуйте обновить баланс позже.")}</p>}
       {payments.error && <p className="screen-error">{payments.error}</p>}
 
       {payments.entitlements?.canStartGame && (
-        <button className="primary" onClick={handleContinue}>
-          Продолжить — партия уже доступна
-        </button>
+        <button className="primary" onClick={handleContinue}>{tr("Продолжить — партия уже доступна")} </button>
       )}
-      <button onClick={() => nav.pop()}>Назад</button>
+      <button onClick={() => nav.pop()}>{tr("Назад")}</button>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { setLanguagePreference } from '../i18n/language';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkerApiError } from '../api/workerClient';
 import { setStorageOwner, getStorageOwner, hideGameId } from '../storage/localStorage';
@@ -9,6 +10,7 @@ import { loadHistoryPage } from './historyRecovery';
 describe('verified account history recovery', () => {
   let storage: ReturnType<typeof memoryStorage>;
   beforeEach(() => {
+    setLanguagePreference('ru');
     storage = memoryStorage();
     vi.stubGlobal('window', { localStorage: storage });
     setStorageOwner('111');

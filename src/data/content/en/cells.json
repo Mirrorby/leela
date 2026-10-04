@@ -1,0 +1,727 @@
+{
+  "contentId": "classic-v1-en",
+  "rulesetId": "classic-v1",
+  "language": "en",
+  "cells": [
+    {
+      "id": 1,
+      "name": "Birth",
+      "sanskrit": "Janma",
+      "shortDescription": "Birth is the entrance to the game and the beginning of a new path. Something has the chance to take shape, setting movement in motion and bringing the consequences of your choices.",
+      "fullDescription": "In Leela, birth means entering the world of action, desire, cause and effect. Before the journey begins, many possibilities exist. A choice makes one of them real and starts what follows. This square invites you to see your intention as a beginning: what do you want to create, change or welcome into your life? A new path requires more than a wish for a result. It also asks for a willingness to accept the process and take responsibility for your steps.",
+      "reflectionQuestions": [
+        "What wants to be born in my life through this intention, and am I ready to begin this journey?"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Illusion",
+      "sanskrit": "Maya",
+      "shortDescription": "You may be seeing your idea of reality rather than reality itself. Beliefs, expectations and the sense of a separate self create a picture of the world that can seem like the only possible one.",
+      "fullDescription": "Maya is a central principle of Leela: we perceive the world through the mind, feelings, past experience and the identities we attach ourselves to. What seems like obvious truth may therefore be only one perspective. Consider the assumptions behind your intention. Perhaps part of the difficulty exists because you have already decided what the result must look like, what is possible or how others should behave. Moving beyond illusion begins with a willingness to see more than your familiar picture of reality.",
+      "reflectionQuestions": [
+        "Which belief about my intention am I treating as a fact, even though it may be my interpretation?"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Anger",
+      "sanskrit": "Krodha",
+      "shortDescription": "Anger arises when something challenges your self-image, disrupts your expectations or confronts you with what is hard to accept. It holds energy, but you choose its direction.",
+      "fullDescription": "In the classical interpretation of Leela, anger is closely connected to ego and identification. When a situation seems to threaten your self, values, expectations or self-image, energy quickly becomes resistance. Anger can cloud clarity and lead to destructive action, but its appearance can also reveal an important point of inner tension. In relation to your intention, consider neither suppressing the reaction nor following it automatically. Instead, understand what has been touched and why it has such power for you.",
+      "reflectionQuestions": [
+        "What about this situation brings up resistance or anger, and what is my anger trying to protect?"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Greed",
+      "sanskrit": "Lobha",
+      "shortDescription": "Greed grows from the feeling that what you have is not enough and that safety depends on constant accumulation. The stronger the fear of loss, the harder it becomes to feel that you have enough.",
+      "fullDescription": "In Leela, greed is primarily linked to insecurity and material survival. Even after basic needs are met, you may keep accumulating money, possessions, opportunities, attention or other resources in the hope of finally feeling safe. Yet external accumulation cannot resolve a continuing inner sense of lack. This square asks whether your intention is driven by a real need or by fear of not having enough. Sometimes moving forward means releasing your fearful grip on what you already have, rather than obtaining more.",
+      "reflectionQuestions": [
+        "What am I afraid of losing or missing out on, and do I really need as much as I am trying to obtain?"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Physical Plane",
+      "sanskrit": "Bhu Loka",
+      "shortDescription": "This is the level of material reality: the body, money, work, home, safety and concrete action. Here an idea must meet the real world.",
+      "fullDescription": "The physical plane in Leela concerns earth, matter and the basic conditions of existence. Attention naturally turns to material achievements, physical comfort, professional skills and the ability to support yourself. These tasks cannot simply be bypassed: steady progress needs a foundation in reality. The square also cautions against making material success your only measure. Look beyond thoughts, feelings and wishes to the facts of your intention: what resources do you have, what is truly missing, and what concrete actions are possible now?",
+      "reflectionQuestions": [
+        "Leaving expectations and fantasies aside, what can I do in the physical world for my intention right now?"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Delusion",
+      "sanskrit": "Moha",
+      "shortDescription": "Delusion makes your current picture of life seem final. Attachment to a familiar view can stop you noticing the possibility of change.",
+      "fullDescription": "Moha is connected to attachment to appearances and to your own account of what is happening. You see present circumstances and assume this is simply how things are, with no other possibility. Limitations then appear absolute, even when some exist only within a habitual way of thinking. This square may reveal where you reached a final conclusion too soon about yourself, other people or the future. Movement resumes when you can acknowledge that your current understanding is incomplete and change is possible.",
+      "reflectionQuestions": [
+        "Where have I decided that things cannot be different, when I may simply be unable to see another option?"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Vanity",
+      "sanskrit": "Mada",
+      "shortDescription": "Vanity is intoxication with your own image. Achievements, abilities, status or recognition can become so important that maintaining that image starts to govern your choices.",
+      "fullDescription": "In the classical account, Mada means false pride and a kind of intoxication with your own qualities, whether real or imagined. Looking at yourself through achievements, status and other people's responses can gradually undermine an objective view. You may then choose something because it makes you look successful, strong, right or special, rather than because it serves your true aim. This square invites you to separate the genuine need behind your intention from a wish to confirm a particular image of yourself.",
+      "reflectionQuestions": [
+        "If nobody would ever know the result or judge me for it, would I still want it?"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Covetousness",
+      "sanskrit": "Matsara",
+      "shortDescription": "Covetousness arises when wanting more becomes entangled with comparison. What someone else possesses starts to feel like something missing from your own life.",
+      "fullDescription": "In Leela, covetousness differs from simple greed through the presence of envy. It becomes important to have what another person has, because comparison intensifies the feeling of not being enough. Their achievements, money, relationships, status or opportunities stop inspiring you and begin to cause dissatisfaction. Examine where your desire comes from: is it truly yours, or did it become valuable after comparing yourself with others? Seeing this distinction can bring attention back from another person's life to your own path.",
+      "reflectionQuestions": [
+        "Do I truly want what I am asking for, or has it become important because someone else has it?"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Sensual Plane",
+      "sanskrit": "Kama Loka",
+      "shortDescription": "This is the realm of desires, feelings and the search for experience through contact with the world. Desire gives movement energy, but can just as easily take control of you.",
+      "fullDescription": "Kama means desire. In classical Leela it includes many aspirations: wealth, recognition, relationships, position, pleasure, achievement and other goals. Desire itself is not a mistake; without it there would be no movement. Difficulty begins when satisfying desires becomes your only guide and you lose sight of their nature. Look closely at the words “I want.” What lies behind your intention, what experience do you hope the result will bring, and is that result really the only way to experience it?",
+      "reflectionQuestions": [
+        "What feeling or state do I actually hope to experience by fulfilling my intention?"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Purification",
+      "sanskrit": "Tapa",
+      "shortDescription": "Purification begins with releasing what drains your energy and no longer helps you move forward. Letting go of excess makes room for a new level of movement.",
+      "fullDescription": "In classical Leela, purification follows the experience of the lower plane, where energy has been spent on desires, tension and negative states. Tapa concerns discipline, reconsidering your way of life and consciously limiting what scatters attention and strength. This opens a possibility of rapid ascent: energy stops flowing in every direction and gains a shared focus. Your intention may not need another action, piece of knowledge or resource. Perhaps the more useful step is identifying what to give up so there is room for what truly matters.",
+      "reflectionQuestions": [
+        "What do I need to release or stop doing to free energy for my intention?"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Enjoyment",
+      "sanskrit": "Gandharva",
+      "shortDescription": "Enjoyment brings back lightness, pleasure and the ability to appreciate the process itself. Not everything has to be a struggle or a means to an end.",
+      "fullDescription": "This square in Leela concerns inner joy, rhythm, harmony, creativity and enjoyment of the moment. After the tension of the lower level, you discover that life can be more than survival and achievement: it can also be play. Art, music, creative activity, rest and connection can restore energy and reveal new sides of life. Have you made the path toward your intention too serious or burdensome? Part of the answer may lie where interest, pleasure and the wish to act for more than a result return.",
+      "reflectionQuestions": [
+        "Where can I bring interest, lightness and enjoyment of the process back into my intention?"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Envy",
+      "sanskrit": "Irasya",
+      "shortDescription": "Envy arises when another person's result makes you feel inadequate. Attention shifts away from your own path toward comparison.",
+      "fullDescription": "In classical Leela, envy is linked to a lack of self-confidence and is the first snake on the board. When someone has something you want, their success may feel like evidence of your own lack or of injustice, rather than an invitation to understand your path. This sends energy downward toward possession and greed. Yet envy can also be a useful sign: it reveals what you value. Look past the person you envy and notice the unmet desire behind the comparison.",
+      "reflectionQuestions": [
+        "What about other people's success or position affects me, and what desire of my own lies beneath this envy?"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Insignificance",
+      "sanskrit": "Antariksha",
+      "shortDescription": "This is a state of inner emptiness and lost bearings. Old goals no longer make sense, while new ones have yet to appear. You seem suspended between two points on the path.",
+      "fullDescription": "Antariksha describes an intermediate, suspended state in Leela: neither on earth nor in heaven. You may lose a sense of meaning, direction and your own significance. What once motivated you no longer gives energy, bringing anxiety, confusion and a wish for any new foothold. The classical account also connects this state to energy exhausted on external impressions and desires. Do not rush to treat a lack of clear answers as defeat. Perhaps your former way of pursuing your intention no longer works, and a new one has yet to emerge.",
+      "reflectionQuestions": [
+        "What about my intention has truly lost its meaning, and what am I holding onto only because I once considered it important?"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Astral Plane",
+      "sanskrit": "Bhuvar Loka",
+      "shortDescription": "A realm of possibilities, ideas and imagination opens before you. You begin to see more options than your earlier focus on material life allowed.",
+      "fullDescription": "In classical Leela, the astral plane lies above the physical and concerns dreams, imagination, feelings and possible developments. When basic material needs stop taking all your attention, energy becomes available for creativity and exploring possibilities. This can bring strong inspiration: new goals, scenarios and forms of expression become visible. Yet you can also spend all your energy imagining the future without making it real. This square invites you to see more options for your intention while checking which ones can become concrete actions.",
+      "reflectionQuestions": [
+        "What new possibilities do I see for my intention, and which am I truly ready to start making real?"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Plane of Fantasy",
+      "sanskrit": "Naga Loka",
+      "shortDescription": "Imagination is freed from familiar limits, allowing you to picture what has never existed. Fantasy can inspire creativity or become an escape from reality.",
+      "fullDescription": "Naga Loka is a space of almost limitless imagination. Its central question is “What if?” You explore ideas, unusual combinations, new roles and possible futures. This capacity underlies many creative discoveries. But when fantasy loses contact with reality, you can become absorbed in an invented world, spending energy on scenarios that never become actions. Do not limit your imagination to past experience. Then honestly distinguish a real possibility for your intention from an appealing fantasy.",
+      "reflectionQuestions": [
+        "What in my picture of the desired result is a real possibility, and what exists only in my imagination so far?"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Jealousy",
+      "sanskrit": "Dvesha",
+      "shortDescription": "Jealousy grows from fear of losing something important and doubt about your own worth. Less inner confidence can bring a stronger wish to control the outside world.",
+      "fullDescription": "The classical account describes suspicion arising when others behave differently from your expectations and self-image. Beneath jealousy lies more than a relationship with another person: there is a deeper sense of insecurity, a fear of being inadequate or losing your place, love, recognition or belonging. Self-doubt easily becomes mistrust and a desire for control. Identify the result or resource you fear losing in relation to your intention, and consider why your inner stability depends so strongly on keeping it.",
+      "reflectionQuestions": [
+        "What am I afraid of losing in this situation, and why would that loss make me doubt my worth or safety?"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Compassion",
+      "sanskrit": "Daya",
+      "shortDescription": "Compassion lets you see beyond your own ego. Instead of immediate judgment, there is room to understand another person's pain, circumstances and motives.",
+      "fullDescription": "Compassion is one of Leela's strongest uplifting states and forms an arrow to the Plane of the Absolute. It arises when you can look beyond your own hurt and imagine another person's experience. This does not mean excusing every act or abandoning your boundaries. It means no longer seeing everything exclusively through your own self. Understanding others' motives can release the need to defend your ego, take revenge or hold onto resentment. Consider whether your situation changes when you include other people's realities alongside your own needs.",
+      "reflectionQuestions": [
+        "Whose perspective is hardest for me to understand, and what might change if I tried seeing the situation through their eyes?"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Plane of Joy",
+      "sanskrit": "Harsha Loka",
+      "shortDescription": "Joy brings a sense of completing a stage and an inner confirmation that you can move forward. Satisfaction comes from the path you have travelled as much as from the result.",
+      "fullDescription": "The plane of joy completes the board's second level. After desire, fantasy, envy, emptiness and jealousy, deeper confidence in your own strength emerges. One stage has ended and another opens ahead. This joy comes with a sense of inner expansion and satisfaction in the ground already covered. Leela also reminds you that this state is temporary: joy is not the final destination, and action will be needed again. Notice the changes already made in your intention and acknowledge what has worked before rushing toward the next goal.",
+      "reflectionQuestions": [
+        "What part of this journey have I already travelled, and which achievement should I finally acknowledge?"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Plane of Karma",
+      "sanskrit": "Karma Loka",
+      "shortDescription": "It is time for action. Fantasies and desires meet reality, where every choice has consequences and shapes the path ahead.",
+      "fullDescription": "Karma Loka opens Leela's third level, the plane of action. Attention shifts from experiencing desires and exploring possibilities to what you actually do. Here karma means the relationship between action and consequence, rather than punishment or a predetermined fate. Actions make an intention real and create conditions for what follows. Themes of identity, strength, influence and responsibility become more prominent. Think less about possible scenarios and look at your actions: they reveal most clearly where your movement is actually directed.",
+      "reflectionQuestions": [
+        "Which of my actions are creating the result I am asking about, and which are taking me in the opposite direction?"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Charity",
+      "sanskrit": "Dana",
+      "shortDescription": "Dana is the ability to give resources for another person's benefit without expecting personal gain. Giving shifts attention from accumulation toward participation in others' lives.",
+      "fullDescription": "In classical Leela, charity is a positive expression of action. You notice others' needs and use money, time, knowledge, abilities or attention for more than your own benefit. The motive matters: true Dana is not an exchange and does not depend on reward, recognition or a return favour. This weakens excessive focus on ego and expands a sense of connection. On the board, this square leads by an arrow to the Plane of Balance. Consider both what you want to receive through your intention and what you can already give.",
+      "reflectionQuestions": [
+        "What of value can I sincerely give others in this context, without making conditions about what I should receive in return?"
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Atonement",
+      "sanskrit": "Samana Papa",
+      "shortDescription": "Atonement begins with honestly acknowledging the consequences of your actions. Instead of becoming stuck in guilt, recognise an error, accept responsibility and change what can still be changed.",
+      "fullDescription": "This square appears when you begin noticing the consequences of actions driven by desire, the pursuit of success or personal interests. What once seemed right or justified may now look different. A need arises to restore inner balance and repair harm. Atonement concerns awareness rather than self-punishment: seeing your share of responsibility, learning and stopping an old pattern. Look back at your intention. Is there a decision, action or attitude to acknowledge and adjust before moving forward?",
+      "reflectionQuestions": [
+        "Which mistake or responsibility do I need to acknowledge honestly, and what can I put right now?"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Plane of Dharma",
+      "sanskrit": "Dharma Loka",
+      "shortDescription": "Dharma is action that fits your nature and the reality of the present moment. The question is not simply how to get what you want, but which path is right for you.",
+      "fullDescription": "In classical Leela, Dharma means inner law, nature and a right way of acting. It is not one set of rules for everyone: circumstances differ, and an action appropriate in one situation may be unsuitable in another. Following Dharma requires seeing reality as it is, understanding your nature and acting consciously, without using means that contradict the goal. This square moves your attention from “How do I get what I want?” to “How should I act here?” The path can become clearer when your actions align with your values and actual circumstances.",
+      "reflectionQuestions": [
+        "What action would be right for me here, even if it does not promise a quick or convenient result?"
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Heavenly Plane",
+      "sanskrit": "Svarga Loka",
+      "shortDescription": "Coarse desires temporarily give way to harmony, joy and subtler aspirations. Even a beautiful state can become an attachment when treated as the final goal.",
+      "fullDescription": "Svarga Loka belongs to the third plane of existence in classical Leela, where thinking comes to the foreground. After material safety and sensual desires, you seek more lasting happiness, harmony and inner order. Traditionally this plane is connected to control over feelings and actions, and release from many lower states. Yet a subtle trap remains: creating an ideal world solely to satisfy your own self. Imagine the most harmonious result for your intention, then ask whether you seek real growth or a state where difficulties can never reach you again.",
+      "reflectionQuestions": [
+        "Am I seeking growth through my intention, or an ideal result that would spare me any further discomfort?"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Bad Company",
+      "sanskrit": "Ku-Sang Loka",
+      "shortDescription": "Your surroundings can quietly change your standards, decisions and sense of what is acceptable. A setting that excuses and strengthens weaknesses instead of helping you see them is especially risky.",
+      "fullDescription": "In Leela, people naturally seek others who support their views and aims. But support does not always mean growth. Bad company can normalise questionable actions, encourage weaknesses and shift responsibility onto others. A group reinforces the feeling of being right and can quietly lead you away from Dharma. This square is therefore a snake, returning the player to the coarser state of vanity. Look at the people, opinions and information around your intention. Do they help you see clearly, or merely confirm what is convenient to believe?",
+      "reflectionQuestions": [
+        "Who or what influences my decisions here, and does that influence clarify reality or simply confirm a comfortable position?"
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Good Company",
+      "sanskrit": "Su-Sang Loka",
+      "shortDescription": "The right company helps you grow without hiding the truth. Support rests on trust, a shared aim and helping each other improve, rather than blind approval.",
+      "fullDescription": "Su-Sang is a positive environment formed around a wish to grow. In the classical interpretation, these people become mirrors for one another: they support strengths without encouraging weaknesses or self-deception. Good company makes it easier to move beyond old ideas about yourself through support, trust and honest feedback. This square reminds you that not every path must be travelled alone. A person, community, mentor or partner may help your abilities open up rather than suppressing them.",
+      "reflectionQuestions": [
+        "Which people help me become stronger and clearer about my intention, and do I make enough room for their influence?"
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Sorrow",
+      "sanskrit": "Dukha",
+      "shortDescription": "Sorrow comes with loss, disappointment or the feeling that what you want is out of reach. It narrows perspective, making it especially important not to mistake a passing experience for the final picture of your future.",
+      "fullDescription": "In classical Leela, joy expands perception while sorrow draws you inward into your own experience. It may follow a real loss or a gap between expectations and events. Resisting difficult feelings or trying to ignore them can keep you in this state longer. This square invites you to experience sorrow while recognising that the present feeling is not the whole of reality. Consider which loss, setback or unmet expectation you continue to hold, and whether it prevents you seeing your next step.",
+      "reflectionQuestions": [
+        "Which loss, setback or unmet expectation do I need to acknowledge and experience so I can see a way forward again?"
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Selfless Service",
+      "sanskrit": "Paramartha",
+      "shortDescription": "Selfless service is action for something greater than personal gain. You do what seems right and necessary without making results, recognition or reward a condition of acting.",
+      "fullDescription": "Paramartha differs from a single charitable act by becoming a lasting way of acting. Rather than constantly calculating the return, you direct your abilities toward a wider purpose: helping people, a shared cause, creativity, knowledge or another meaningful aim. This does not require neglecting your needs or allowing others to use you. It frees action from the constant expectation of personal reward. An arrow begins here in Leela: when activity no longer revolves solely around the self, perception changes. What greater purpose could your desired result serve?",
+      "reflectionQuestions": [
+        "Without personal gain, recognition or fear of not getting a result, what greater purpose would still make me want to continue?"
+      ]
+    },
+    {
+      "id": 28,
+      "name": "True Religiosity",
+      "sanskrit": "Su-Dharma",
+      "shortDescription": "True religiosity in Leela means living in accordance with your own Dharma, rather than following external rituals. Understanding your path replaces using others' rules in place of inner understanding.",
+      "fullDescription": "Sudharma literally means “one's own Dharma.” The classical interpretation emphasises that people differ in abilities, circumstances, experience and role, so there cannot be one identical path for everyone. True religiosity appears when external prescriptions give way to understanding your own nature and acting accordingly. Sudharma does not mean doing anything you want: it involves rejecting false means and aligning actions with the broader laws of life. This square may invite you to stop seeking a universally correct answer and discover your own path.",
+      "reflectionQuestions": [
+        "If I stopped following how others would act “correctly,” which path would truly fit my nature and values?"
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Absence of Religiosity",
+      "sanskrit": "A-Dharma",
+      "shortDescription": "Adharma is movement against your nature and reality. You may feel certain your path is right while choosing means that contradict the very purpose you seek.",
+      "fullDescription": "In classical Leela, Adharma is the opposite of Dharma. The square's title can be misleading when taken literally: its meaning goes beyond an absence of religious belief. It concerns actions that contradict your nature, circumstances or broader laws of existence. Blind certainty is especially dangerous: believing you are right without checking reality can justify destructive decisions in the name of a higher goal. Adharma is a snake that returns the player downward. Examine your means as well as your desired result: are you going against your values, health, other people or obvious facts?",
+      "reflectionQuestions": [
+        "Where am I acting against myself, my values or reality and justifying it by the result I want?"
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Good Tendencies",
+      "sanskrit": "Uttama Gati",
+      "shortDescription": "Good tendencies are a steady movement toward greater harmony. Helpful actions gradually become a natural part of life instead of requiring constant struggle with yourself.",
+      "fullDescription": "Uttama means “good,” and Gati means “movement.” This square describes a state that grows from inner balance. Habits, ways of acting and the direction of life gradually support development rather than scattering energy. The classical text connects this with discipline, attention to the body, breathing, life's rhythms and spiritual practice. More broadly, a single sound decision becomes a lasting tendency through repetition. Your intention may need a direction you can sustain long enough to become natural, rather than one perfect action.",
+      "reflectionQuestions": [
+        "Which small but regular action could, over time, change the whole direction of my journey?"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Plane of Holiness",
+      "sanskrit": "Yaksha Loka",
+      "shortDescription": "Holiness here means seeing a higher meaning in ordinary life rather than holding a special status. What once existed only as an idea begins to become part of lived experience.",
+      "fullDescription": "In classical Leela, the plane of holiness follows good tendencies. You no longer merely discuss higher principles, goodness or spirituality: you begin seeing them in the world and in your own actions. A wish arises to live by this understanding rather than agreeing with it only intellectually. Look beyond the outward result of your intention. What wider meaning might this situation contain, and what can the path teach you? Change sometimes begins when a question becomes part of a larger process rather than only a problem to solve.",
+      "reflectionQuestions": [
+        "What deeper meaning might this situation hold if I looked beyond my desired result?"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Plane of Balance",
+      "sanskrit": "Mahar Loka",
+      "shortDescription": "Balance appears when desires, thoughts and external circumstances stop continually pulling you from side to side. You can act without losing your inner centre.",
+      "fullDescription": "Mahar Loka occupies a central place in classical Leela, with three main levels below and three above. It symbolises inner balance and a move from mainly personal desires toward a wider perception of life. Desires and thoughts do not have to disappear; they simply stop fully controlling your state. The classical account describes an ability to act from the heart and feel connected with others. How strongly does the outcome of your intention determine your inner state? Balance lets you continue whether events develop as you hoped or differently.",
+      "reflectionQuestions": [
+        "What about my intention most unsettles me, and can I remain inwardly steady regardless of the outcome?"
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Plane of Fragrance",
+      "sanskrit": "Gandha Loka",
+      "shortDescription": "Perception becomes subtler. Alongside analysing events, you begin sensing their quality and noticing faint signals you once missed.",
+      "fullDescription": "Gandha means smell. In the classical account, smell is linked to the earth element, but at a higher level sensory perception becomes subtler and gains symbolic meaning. What was previously only physical begins to evoke a deeper emotional and inner response. This square can be understood as sensitivity to the quality of what is happening. You may be unable to explain logically why a situation feels right or wrong while already sensing a mismatch. Notice these subtle signals in your intention, alongside the facts, without ignoring them or letting them replace evidence.",
+      "reflectionQuestions": [
+        "What am I already sensing in this situation, even though I cannot yet fully explain it logically?"
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Plane of Taste",
+      "sanskrit": "Rasa Loka",
+      "shortDescription": "Taste becomes the ability to distinguish quality, meaning and value. You begin to understand more clearly both what you want and what truly suits you.",
+      "fullDescription": "At Leela's lower levels, taste is primarily connected to sensual pleasure. Here it becomes a subtler capacity to discern quality in ideas, knowledge, creativity, relationships and ways of living. You grow more selective and form your own sense of what is valuable and beautiful. This goes beyond pleasure toward distinguishing substance from surface. Examine your criteria for choosing: does what you seek match your own taste and values, or are you choosing it because it is considered attractive or correct?",
+      "reflectionQuestions": [
+        "Does what I seek truly match my own taste and values, or does it merely look attractive from the outside?"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Purgatory",
+      "sanskrit": "Naraka Loka",
+      "shortDescription": "Purgatory is an encounter with the consequences of your actions. Its purpose is purification: seeing what needs correcting and no longer carrying it forward.",
+      "fullDescription": "In classical Leela, Naraka Loka appears with increasing freedom: more freedom to choose brings greater responsibility for the consequences. Every action creates a result, and some results are painful. Purgatory is described as a process of correcting accumulated negativity rather than an external punishment. A setback, conflict or inner crisis can reveal limitations in an old way of acting. Observe what happens without immediately condemning yourself. What do the consequences of past decisions show about your intention, and what must change to avoid creating the same result again?",
+      "reflectionQuestions": [
+        "Which consequence of earlier decisions is appearing now, and what must I change to avoid repeating this pattern?"
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Clarity of Consciousness",
+      "sanskrit": "Svachchha",
+      "shortDescription": "Clarity arrives after purification, when inner noise no longer obscures what is happening. You can see a situation without continually overlaying fears, expectations and old judgments.",
+      "fullDescription": "Swachchha means purity, clarity and transparency. This square completes Leela's fourth level and prepares the move to knowledge. Clarity comes not simply from more information but from removing inner obstacles that distort perception. Doubts, automatic judgments and the need to label things good or bad immediately recede, allowing a more direct view. Set familiar conclusions aside and look at the facts of your intention afresh. The answer may already be before you, hidden by too many thoughts about what it ought to be.",
+      "reflectionQuestions": [
+        "What becomes clear about my intention when I set aside fears, expectations and old judgments for a moment?"
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Wisdom",
+      "sanskrit": "Jnana",
+      "shortDescription": "Wisdom means understanding both truth and how to live it. You begin to see connections between events, your actions and their consequences.",
+      "fullDescription": "Jnana in classical Leela combines two abilities: understanding truth and knowing the right means of putting it into everyday practice. Intellectual understanding alone is insufficient; real knowledge shows in action. This square offers a wider view of the game of your life: recurring patterns, your role and the connections between seemingly separate events. Its arrow leads to the Plane of Bliss. Ask both “What have I understood?” and “How will this understanding now change what I do?”",
+      "reflectionQuestions": [
+        "What have I already understood through my intention, and how should that understanding change my actions?"
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Prana Loka",
+      "sanskrit": "Prana Loka",
+      "shortDescription": "Prana is the life force, the energy of receiving and sustaining life. This square draws attention to what nourishes your body, attention, thoughts and ability to act.",
+      "fullDescription": "The classical account describes Prana as vital energy linked primarily to breathing and receiving energy from outside. It sustains the body's activity and the ability to move, perceive and act. More broadly, the principle is receiving: you cannot continually spend strength without taking anything in. Movement needs physical, emotional and meaningful sources of energy. Consider what truly fills and supports you, and what only looks like a resource while actually exhausting you. Sometimes the difficulty is not a lack of discipline but having no energy left to move.",
+      "reflectionQuestions": [
+        "What truly gives me energy for my intention now, and what quietly drains my strength?"
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Apana Loka",
+      "sanskrit": "Apana Loka",
+      "shortDescription": "Apana is the energy of release and elimination. To keep receiving something new, you need to let go of what has already fulfilled its purpose.",
+      "fullDescription": "In the classical system, Prana receives energy while Apana removes what the body no longer needs. The word is linked to downward movement and release. Within the game's meaning, this recalls the need for natural exchange: you cannot endlessly receive and accumulate. Old ideas, relationships, commitments, habits and ways of acting sometimes need to end to make room for something new. Look at what you are still holding onto in your intention even though it no longer supports further movement.",
+      "reflectionQuestions": [
+        "What has already served its purpose here, yet I keep holding onto it instead of letting it go?"
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Vyana Loka",
+      "sanskrit": "Vyana Loka",
+      "shortDescription": "Vyana is the energy of distribution. Receiving strength is not enough: you need to direct it where it is needed instead of scattering it among many tasks.",
+      "fullDescription": "In the classical account, Vyana takes received pranic energy and distributes it throughout the body, supporting movement and its various systems. While Prana symbolises receiving and Apana releasing, Vyana shows how resources circulate. In life, this can mean managing attention, time, strength and abilities. You may have enough energy but see little result if it is divided chaotically across too many directions. Where do your resources actually go, and does that match what you call your main aim?",
+      "reflectionQuestions": [
+        "Where does most of my energy go now, and does that match what truly matters for my intention?"
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Human Plane",
+      "sanskrit": "Jana Loka",
+      "shortDescription": "On the human plane, accumulated experience becomes understanding. You begin not only to live but to recognise what happens, express your understanding and share it with others.",
+      "fullDescription": "Jana Loka opens the level of knowledge and meaningful interaction with the world. In classical Leela, you arrive after earlier levels and seek to align your life more closely with what you have realised. Communication becomes especially important: understanding matures when it can be expressed, applied and shared. This level is therefore associated with teachings and passing on knowledge. Notice your accumulated experience. You may not need another external answer: an important understanding may already be forming within, ready to be stated clearly and put into practice.",
+      "reflectionQuestions": [
+        "What has my experience already taught me about my intention, and which truth is it time to acknowledge and express clearly?"
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Plane of Agni",
+      "sanskrit": "Agni Loka",
+      "shortDescription": "Agni is transforming fire, the energy through which one form becomes another. See your strength as a means of embodying what matters, rather than an end in itself.",
+      "fullDescription": "In classical Leela, Agni symbolises fire as energy, light and the force involved in creating form. The body and outward form become instruments for a deeper inner principle. Fire is also a witness: you cannot entirely hide from yourself a mismatch between understanding and action. This square therefore concerns transformation and honesty, as well as strength and activity. Where does your inner fire go? Does it embody what you believe is right, or sustain a form that no longer fits your understanding?",
+      "reflectionQuestions": [
+        "Where am I directing my strength here, and does that match what I truly believe is right?"
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Human Birth",
+      "sanskrit": "Manushya Janma",
+      "shortDescription": "This is the birth of a more mature human consciousness, rather than a body. Identity begins to rest on seeing truth and living by it, beyond roles, belonging and others' recognition.",
+      "fullDescription": "Manushya Janma represents the symbolic birth of the Human after earlier stages of development. The classical text distinguishes this from physical birth: you seem to find yourself for the first time, no longer defined entirely by family, group, status, religion or other external labels. Direct understanding of truth and aligning thoughts, words and actions with it become your guide. Separate your own decision from familiar roles. Your answer may grow clearer when you look beyond others' expectations toward a choice that fits you.",
+      "reflectionQuestions": [
+        "How would I act here if I did not have to meet others' expectations, roles or ideas about me?"
+      ]
+    },
+    {
+      "id": 44,
+      "name": "Ignorance",
+      "sanskrit": "A-Vidya",
+      "shortDescription": "Ignorance is more than missing information. It is taking your feelings, thoughts and perceptions for the whole of reality and forgetting how strongly the mind can distort it.",
+      "fullDescription": "In classical Leela, Avidya appears when understanding of illusion is lost and you identify completely with emotional states, desires and sensory perception again. The present experience starts to seem like absolute truth. You can have much information and still remain captive to your own way of seeing. This square is a snake returning the player to the Sensual Plane. Where have you stopped exploring your situation and decided that your current interpretation is the only possible one?",
+      "reflectionQuestions": [
+        "What am I treating as obvious truth simply because that is how I currently feel or perceive this situation?"
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Right Knowledge",
+      "sanskrit": "Su-Vidya",
+      "shortDescription": "Right knowledge brings understanding together with experience and action. Truth becomes real knowledge when it changes how you live and act.",
+      "fullDescription": "Su-Vidya goes beyond simple wisdom in classical Leela. If understanding leaves behaviour unchanged, knowledge has not yet become part of life. Right knowledge joins awareness, direct experience and a corresponding way of acting. Wider connections become visible, and separate events are understood within the whole path. Its arrow leads much higher, to the Plane of Cosmic Good. Examine the gap between what you already know and what you do. Perhaps you need to live by an answer already found, rather than seek another.",
+      "reflectionQuestions": [
+        "Which right decision about my intention do I already know but have not yet put into action?"
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Discernment",
+      "sanskrit": "Viveka",
+      "shortDescription": "Discernment separates the essential from the temporary, inner value from outward appeal, and a real path from the desire to hold onto one.",
+      "fullDescription": "In classical Leela, Viveka is the power of discernment that develops after knowledge. The world changes continually, yet we often treat its forms as permanent and become attached to them. Discernment reveals the difference between essence and its temporary expression. It combines experience, knowledge and inner clarity rather than being cold analysis alone. This helps determine direction, and its arrow leads to the Plane of Happiness. Separate what truly matters in your intention from what merely seems necessary. The desired form may change while its deeper meaning remains.",
+      "reflectionQuestions": [
+        "What is truly essential in my intention, and what is simply a form I am used to holding onto?"
+      ]
+    },
+    {
+      "id": 47,
+      "name": "Plane of Neutrality",
+      "sanskrit": "Saraswati",
+      "shortDescription": "Neutrality lets you observe without automatically taking a side. When opposing impulses balance, you can see a situation as a whole.",
+      "fullDescription": "In the classical account, Saraswati is linked to balance between the solar and lunar principles. When neither opposing energy dominates, a neutral flow and the ability to observe the game appear. Neutrality does not require indifference or abandoning action. It frees perception from immediately labelling one side right and the other wrong, making room for knowledge and a more objective understanding. Step briefly outside the struggle between opposing decisions, desires or judgments and look at them as an observer.",
+      "reflectionQuestions": [
+        "What would I see if I stopped taking sides for a moment and observed both positions without immediately deciding which was right?"
+      ]
+    },
+    {
+      "id": 48,
+      "name": "Solar Plane",
+      "sanskrit": "Yamuna",
+      "shortDescription": "The solar plane concerns active, directed, creative strength. It is the energy of action, will and turning an inner impulse into outward movement.",
+      "fullDescription": "In classical Leela, Yamuna symbolises the solar principle: active, electric energy connected to action and creative expression. This strength is necessary for starting, changing and creating. Yet too much solar dominance can bring rigidity, pressure and an attempt to destroy obstacles by force alone. The task is to balance activity with the opposite lunar principle rather than maximise it. Your intention may require a decisive step, but distinguish creative strength from trying to force reality to obey your wishes.",
+      "reflectionQuestions": [
+        "Where do I need to act more decisively, and where is my activity becoming an attempt to force events into my preferred scenario?"
+      ]
+    },
+    {
+      "id": 49,
+      "name": "Lunar Plane",
+      "sanskrit": "Ganga",
+      "shortDescription": "The lunar plane concerns receptivity, renewal and allowing events to unfold without constant pressure. Sometimes the path calls for learning to receive rather than increasing action.",
+      "fullDescription": "Ganga represents the lunar, magnetic principle in classical Leela. While solar energy points outward toward action, lunar energy supports receptivity, inner work, renewal and receiving. This is a necessary counterpart to active strength rather than passivity; their interaction creates balance. The classical account also connects lunar flow with meditation, music, poetry and subtler perception. Are you trying to solve everything through action alone? Perhaps your intention needs space in which an answer or opportunity can emerge by itself.",
+      "reflectionQuestions": [
+        "What might change if, instead of trying again to control things, I listened, received and waited for what is already beginning to emerge?"
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Plane of Asceticism",
+      "sanskrit": "Tapa Loka",
+      "shortDescription": "Asceticism here means focused inner work and a willingness to give up excess for a more important aim. Energy stops scattering and flows in one chosen direction.",
+      "fullDescription": "Tapa Loka is one of classical Leela's main planes. Tapas concerns inner fire, discipline, restraint and persistent work on yourself. You can now notice what keeps you at earlier levels and work with it consciously. Its meaning is releasing attachments and actions that obstruct progress, rather than suffering for its own sake or punishing the body. When the aim matters enough, you can stop spending resources on everything else. What is the price of your path? Which habits, pleasures, distractions or old ways are you truly willing to release?",
+      "reflectionQuestions": [
+        "What am I truly willing to give up, and which discipline will I accept if my intention matters this much to me?"
+      ]
+    },
+    {
+      "id": 51,
+      "name": "Earth",
+      "sanskrit": "Prithivi",
+      "shortDescription": "Earth is support, patience and the capacity to sustain life. Beyond taking resources from the world, recognise your connection with the foundation that makes your existence possible.",
+      "fullDescription": "In classical Leela, Earth symbolises the great maternal principle and the stage for the game of consciousness. At lower levels, the material world may look mainly like resources for meeting your needs. Here, connection, responsibility and preserving what sustains life become visible. Earth receives many forms without asking anything back, representing patience, steadiness and generosity. Look at the foundation of your intention: what already supports you, and how carefully do you treat the people, resources and circumstances that make further movement possible?",
+      "reflectionQuestions": [
+        "What is the real foundation for my intention, and am I treating what already supports me with enough care?"
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Plane of Violence",
+      "sanskrit": "Himsa Loka",
+      "shortDescription": "Violence begins when certainty becomes a claim to decide for others. Believing in a good aim does not justify means that take away someone's freedom to follow their own path.",
+      "fullDescription": "In classical Leela, this danger appears at a high level of development, when you already have strength, knowledge and confidence in your understanding. The trap is deciding that knowing what is right gives you permission to force others to follow it. Violence can be physical or take the form of pressure, coercion, control or denying independent choice. This square is a snake returning the player to Purgatory to face consequences. Are you pursuing your intention through pressure on yourself, others or the situation?",
+      "reflectionQuestions": [
+        "Where am I trying to force myself, another person or circumstances to obey my will because I believe I know best?"
+      ]
+    },
+    {
+      "id": 53,
+      "name": "Plane of Liquids",
+      "sanskrit": "Jala Loka",
+      "shortDescription": "Water symbolises fluidity and changing form without losing your nature. Where rigidity creates conflict, flexibility allows movement to continue.",
+      "fullDescription": "Jala Loka follows the Plane of Violence in classical Leela. Water cools excessive heat and softens rigidity produced by strength, asceticism and absolute certainty. Water has no fixed shape: it takes the shape of its vessel. This represents adapting without clinging to a fixed self-image or a predetermined course of events. Fluidity means releasing unnecessary rigidity and finding a form suited to reality, rather than weakness or a lack of principles. Is a chosen scenario keeping you from seeing another path toward what matters?",
+      "reflectionQuestions": [
+        "Where am I holding too rigidly to a scenario, and what becomes possible if I let the form of the solution change?"
+      ]
+    },
+    {
+      "id": 54,
+      "name": "Plane of Spiritual Devotion",
+      "sanskrit": "Bhakti Loka",
+      "shortDescription": "Spiritual devotion is love and wholehearted acceptance, where constant separation between self and world falls away. You stop fighting the game and begin finding meaning throughout your experience.",
+      "fullDescription": "Bhakti is considered one of classical Leela's most direct paths to liberation. After knowledge, discipline and discernment, understanding alone is no longer enough: love and trust in life emerge. Experience is no longer divided solely into useful and harmful, pleasant and unpleasant, because the whole path has value. This ends an inner war with reality rather than asking for passive submission. Its arrow leads directly to Cosmic Consciousness. Could you continue your intention through trust, love and acceptance of what cannot be fully controlled, alongside planning and action?",
+      "reflectionQuestions": [
+        "How would my relationship with this intention change if I stopped fighting what has happened and accepted the whole path as part of my experience?"
+      ]
+    },
+    {
+      "id": 55,
+      "name": "Egoism",
+      "sanskrit": "Ahamkara",
+      "shortDescription": "Egoism arises when the self, its desires and aims become the centre of the whole world. Other people and even your values can quietly become tools for getting what you want.",
+      "fullDescription": "Ahamkara concerns the formation of a separate self. A sense of individuality is needed to participate in the game, but becomes a trap when you identify completely with desires, achievements and self-image. The closer the goal, the stronger the fear of losing that identity may grow. The result can then seem so important that the means no longer matter. This is one of classical Leela's strongest snakes: egoism returns the player to Anger and the lower level. Has your desired result become proof of your own significance?",
+      "reflectionQuestions": [
+        "What would failing to obtain this result mean for my self-image, and why is keeping that particular image so important to me?"
+      ]
+    },
+    {
+      "id": 56,
+      "name": "Plane of Primordial Vibrations",
+      "sanskrit": "Omkara",
+      "shortDescription": "Omkara draws attention to the subtlest level of manifestation: vibration and sound. Alongside the meaning of your words and actions, notice the inner state from which they arise.",
+      "fullDescription": "In classical Leela, Om is the primordial vibration underlying the manifested world. Here the player moves from coarse forms of perception toward subtler experience. Sound, voice, rhythm and inner resonance gain importance. The classical text also connects Omkara with calming the mind, simplifying life and releasing automatic habits that obstruct clear perception. In a contemporary reading, listen to your inner state: the same action carries a different quality when it comes from fear, irritation or clarity. Notice the state from which you interact with the world.",
+      "reflectionQuestions": [
+        "What inner state am I bringing to my intention through words and actions: tension, fear, struggle or calm clarity?"
+      ]
+    },
+    {
+      "id": 57,
+      "name": "Plane of Gases",
+      "sanskrit": "Vayu Loka",
+      "shortDescription": "Air symbolises movement, lightness and freedom from fixed form. You can move without the old heaviness and stop defining yourself by one unchanging idea of who you must be.",
+      "fullDescription": "Vayu Loka literally means the Plane of Air. In Leela's classical sequence, liquid can change shape but remains tied to density and weight. Air moves further: it spreads freely without being held in one form. This square represents release from the weight of former identifications and greater freedom of movement. You depend less on confirming one version of yourself and adapt more easily to changing circumstances. Has your self-image become a limit? A solution sometimes becomes possible when you allow yourself to act differently from habit.",
+      "reflectionQuestions": [
+        "Which idea about myself do I need to release so that real freedom of movement can appear here?"
+      ]
+    },
+    {
+      "id": 58,
+      "name": "Plane of Radiance",
+      "sanskrit": "Teja Loka",
+      "shortDescription": "Radiance is inner clarity becoming visible outwardly. You no longer need to prove your strength continually: the quality of your state shows in how you live and affect the world.",
+      "fullDescription": "Teja means light or radiance. In classical Leela, this plane follows vibration and air: energy becomes subtler until it appears as light. Radiance concerns strong inner energy and clarity that naturally affect others. Distinguish it from vanity and the wish to be noticed. True radiance needs no constant proof of being exceptional; it follows naturally from an inner state. No separate arrow leads here, suggesting gradual development of this quality. Consider what your actions express, rather than how to convince others of your worth.",
+      "reflectionQuestions": [
+        "If I did not need to prove my worth to anyone, what quality would I want my actions to express naturally?"
+      ]
+    },
+    {
+      "id": 59,
+      "name": "Plane of Reality",
+      "sanskrit": "Satya Loka",
+      "shortDescription": "The plane of reality is direct contact with what is. The distance between inner understanding and life narrows, and truth is no longer sought only in external explanations.",
+      "fullDescription": "Satya means truth or reality. Satya Loka is the highest of classical Leela's seven main planes and the point toward which earlier development has led. Inner balance brings a more direct understanding of your nature and connection with the whole. Yet the game is not over: states ahead can still return you downward. This plane does not mean you can no longer make mistakes. It is a moment of great clarity where acting in accordance with what you see matters. Separate facts and inner knowledge from the fears, hopes and scenarios the mind adds.",
+      "reflectionQuestions": [
+        "Without hopes, fears or attempts to alter the facts, what is the reality of this situation right now?"
+      ]
+    },
+    {
+      "id": 60,
+      "name": "Positive Intellect",
+      "sanskrit": "Subuddhi",
+      "shortDescription": "Positive intellect approaches experience through meaning and right action instead of automatic rejection. The mind becomes a tool for clarity rather than endless doubt.",
+      "fullDescription": "Buddhi is the intellect that recognises, analyses and evaluates experience. At a high level it can take a positive or negative direction. Subuddhi means right understanding after contact with the Plane of Reality. This does not require naive optimism or calling everything good. It means accepting that a situation exists, exploring it and understanding action that fits Dharma, rather than spending all your energy denying it. An arrow from Dharma leads here. Instead of “Why did this happen to me?” ask “What can I understand and how should I act, given what already exists?”",
+      "reflectionQuestions": [
+        "If I stopped denying what I dislike about this situation, which reasonable, constructive action would become possible now?"
+      ]
+    },
+    {
+      "id": 61,
+      "name": "Negative Intellect",
+      "sanskrit": "Dur-Buddhi",
+      "shortDescription": "Negative intellect turns analysis into rejection. Doubt stops helping you seek truth and starts making you dismiss possibilities, experience and reality itself.",
+      "fullDescription": "Buddhi, the intellect, can bring liberation or become a serious trap. In Durbuddhi, negative judgments and doubts become so absorbing that you stop accepting events as part of your path. Exploration gives way to constant rejection: “This is wrong,” “This is pointless,” “Nothing will work.” This position drains energy and hides possibilities. In classical Leela, the square is therefore a snake returning the player to Insignificance. Has your critical mind made you reject the path before really trying to travel it?",
+      "reflectionQuestions": [
+        "Which possibility am I rejecting because fear or doubt makes me say no in advance, rather than because it is truly impossible?"
+      ]
+    },
+    {
+      "id": 62,
+      "name": "Happiness",
+      "sanskrit": "Sukha",
+      "shortDescription": "Happiness here grows from inner balance and a sense of being close to your aim. Yet a pleasant state should not become a reason to stop too soon.",
+      "fullDescription": "Sukha in classical Leela is harmony of mind and body after discernment, clarity and a positive direction of intellect. You feel that you are moving well and are much closer to the goal. A subtle trap appears here: happiness can make it seem that nothing more needs doing. Contentment may then become passivity, opening the way to Tamas. Acknowledge the good already achieved in your intention while taking care not to use satisfaction as a reason to abandon further action.",
+      "reflectionQuestions": [
+        "What can I already recognise as a source of real happiness, and which next step matters beyond this pleasant state?"
+      ]
+    },
+    {
+      "id": 63,
+      "name": "Tamas",
+      "sanskrit": "Tamas",
+      "shortDescription": "Tamas is inertia, forgetfulness and giving up further movement. When the path seems finished or nothing seems changeable, energy begins moving downward.",
+      "fullDescription": "In classical Leela, Tamas means darkness and a lack of clarity. At this high level, its chief danger is inaction: you stop following Dharma because you think the path is complete or further effort pointless. While the game continues, action and consequences cannot simply be cancelled. Trying to leave the process is itself a choice with consequences. Tamas is the board's longest snake, returning the player to Illusion. Are fatigue, fear or reluctance to act being presented as a final conclusion that nothing more needs doing?",
+      "reflectionQuestions": [
+        "Where have I stopped moving because I am tired, disappointed or convinced action is pointless, rather than because the path is complete?"
+      ]
+    },
+    {
+      "id": 64,
+      "name": "Phenomenal Plane",
+      "sanskrit": "Prakriti Loka",
+      "shortDescription": "Attention turns from separate phenomena toward the source of their forms. Behind events, you begin seeing the principles that underlie their outward appearance.",
+      "fullDescription": "Prakriti in Leela's classical philosophy is primordial nature, the source of the manifested world. Earth, water, fire, air, space, mind, intellect and ego are viewed as forms of one original foundation. Earlier levels explored separate expressions of life; here their common nature and the link between idea and embodiment become visible. Every outward form has an inner basis, while an idea without embodiment remains a possibility. Look beneath your specific difficulty to the central principle, need or idea behind its different appearances.",
+      "reflectionQuestions": [
+        "What is the deeper foundation of my intention: which need or idea remains unchanged even if the outward solution changes?"
+      ]
+    },
+    {
+      "id": 65,
+      "name": "Plane of Inner Space",
+      "sanskrit": "Uranta Loka",
+      "shortDescription": "Inner space opens as the familiar sense of a separate self weakens. Constant judgment gives way to observing and a deeper sense of wholeness.",
+      "fullDescription": "Uranta Loka describes a space where the familiar sense of a separate self ends. The division between observer and events becomes less rigid, while “good or bad” and “winning or losing” lose their absolute importance. You can observe life's processes without immediately trying to claim them or push them away. This is the position of an inner witness rather than indifference. Briefly look beyond “What will this give me?” and see the whole process of your intention.",
+      "reflectionQuestions": [
+        "What would I see if I stopped evaluating everything only through personal gain, loss, success or failure for a moment?"
+      ]
+    },
+    {
+      "id": 66,
+      "name": "Plane of Bliss",
+      "sanskrit": "Ananda Loka",
+      "shortDescription": "Bliss differs from pleasure and ordinary happiness. It is an inner experience of wholeness that needs no particular external cause.",
+      "fullDescription": "Ananda is regarded as a fundamental quality of consciousness in classical Leela. Unlike pleasure, joy or happiness that arise from circumstances and can be judged by the mind, bliss is not produced by an external object. Another person's description cannot fully convey it; it is available as direct inner experience. An arrow from Wisdom leads here: deep knowledge gradually releases the need to seek fullness only outside yourself. Are you expecting your result to give you a state that external achievements alone cannot provide?",
+      "reflectionQuestions": [
+        "What inner state do I hope to experience after fulfilling my intention, and does it really depend entirely on an external result?"
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Plane of Cosmic Good",
+      "sanskrit": "Rudra Loka",
+      "shortDescription": "Cosmic good is action that no longer revolves only around an individual. Knowledge, feeling and action join in creating benefit beyond personal gain.",
+      "fullDescription": "Rudra Loka is linked to Shiva and transformation through dismantling false identification in classical Leela. Some forms must end for new ones to arise: destruction belongs to creation and renewal rather than meaningless loss. Here you stop resisting the flow of Dharma and direct action toward the good of the whole. Truth, beauty and action move together. Look beyond your personal result and consider how the chosen path could benefit others as well as you.",
+      "reflectionQuestions": [
+        "How could my intention be realised so that its result benefits other people as well as me?"
+      ]
+    },
+    {
+      "id": 68,
+      "name": "Cosmic Consciousness",
+      "sanskrit": "Vaikuntha Loka",
+      "shortDescription": "Cosmic Consciousness is the aim of classical Leela. The individual player's path ends in awareness of unity: separation between self, life and the game no longer governs perception.",
+      "fullDescription": "Vaikuntha Loka sits at the centre of the top row and is the classical game's final goal. Earlier states, rises, falls, desires, mistakes and insights have all led here. The player's symbol loses its meaning: the game of the separate personality ends as the need to experience a self independent of the whole disappears. Traditionally, this is Moksha, liberation. In relation to your intention, the question may have fulfilled its purpose. The understanding of yourself and life gained along the path becomes more important than the answer itself.",
+      "reflectionQuestions": [
+        "If my original intention was a way of leading me toward a more important understanding, what do I now see about myself and my life?"
+      ]
+    },
+    {
+      "id": 69,
+      "name": "Plane of the Absolute",
+      "sanskrit": "Brahma Loka",
+      "shortDescription": "The Plane of the Absolute concerns the creative force from which forms and rules arise. The ability to create becomes visible, yet even the highest creative strength is not final liberation.",
+      "fullDescription": "Brahma Loka is the realm of Brahma, the creative principle in classical Leela. Brahma organises matter, creates forms and sets the laws of their development. Here the player meets the force that turns the unmanifested into concrete form. The source stresses a distinction: even this ability to create does not equal liberation. You can create a system, role, project or a new version of life and still remain within the game. What can you create from your journey, and are you mistaking creation itself for the final aim?",
+      "reflectionQuestions": [
+        "What new thing can I create from this experience, and am I treating the created form as my path's final goal?"
+      ]
+    },
+    {
+      "id": 70,
+      "name": "Sattva Guna",
+      "sanskrit": "Sattva Guna",
+      "shortDescription": "Sattva is clarity, light and balance. It becomes easier to see without strong distortion from desire, fear or inertia.",
+      "fullDescription": "Sattva is one of the three Gunas, the fundamental qualities of manifested nature. It concerns clarity, knowledge, harmony and inner balance. Classical Leela emphasises that no Guna exists entirely alone: Sattva, Rajas and Tamas continually interact and turn into one another. Even clarity should not become a new attachment. Sattva offers favourable conditions for understanding but still belongs to the game of forms. Use this moment for accurate understanding and right action, rather than trying to keep a state of perfect calm forever.",
+      "reflectionQuestions": [
+        "What can I see especially clearly about my intention now, and which action naturally follows from that clarity?"
+      ]
+    },
+    {
+      "id": 71,
+      "name": "Rajas Guna",
+      "sanskrit": "Rajas Guna",
+      "shortDescription": "Rajas is the energy of movement, desire and action. It turns ideas into deeds, but attachment to results can easily turn activity into tension and suffering.",
+      "fullDescription": "Rajas Guna is the active quality of consciousness. Movement, change and expressing hidden potential depend on it, so Rajas has a necessary role between Tamas's inertia and Sattva's clarity. Yet activity creates a sense of being the doer: “I act,” “I must achieve,” “I need a result.” Stronger attachment makes obstacles and deviations from expectations more painful. The task is to act without becoming completely dependent on the outcome, rather than eliminate activity. Examine how strongly anticipation of your result governs your state.",
+      "reflectionQuestions": [
+        "Can I keep acting for my intention without making one particular result a condition of my peace and worth?"
+      ]
+    },
+    {
+      "id": 72,
+      "name": "Tamas Guna",
+      "sanskrit": "Tamas Guna",
+      "shortDescription": "Tamas Guna is inertia, density and hidden potential. It ends the board while beginning another cycle: what remains unmanifested must again take form through action.",
+      "fullDescription": "Tamas Guna is the third Guna, linked to passivity, darkness and inertia. Classical Leela does not treat it simply as evil: energy needs stability and density to take form. At the highest level it is closer to its original state within Prakriti, yet still obscures clarity and stops movement. The final square therefore begins a new cycle: its snake returns the player to Earth, where form, action and another journey become possible. Understanding must take shape in real life, or it becomes motionless potential again.",
+      "reflectionQuestions": [
+        "Which understanding gained through my intention now needs a concrete form in life so it does not remain only a thought?"
+      ]
+    }
+  ]
+}

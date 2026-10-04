@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import type { CellContent as CellContentData } from '../types/game';
 
 export interface CellContentProps {
@@ -16,8 +17,8 @@ export function CellContent({ cellId, cell }: CellContentProps) {
   if (!cell) {
     return (
       <>
-        <h2>Клетка {cellId}</h2>
-        <p className="muted">Контент для этой клетки ещё не заполнен (заглушка).</p>
+        <h2>{tr("Клетка")} {cellId}</h2>
+        <p className="muted">{tr("Контент для этой клетки ещё не заполнен (заглушка).")}</p>
       </>
     );
   }
@@ -31,7 +32,7 @@ export function CellContent({ cellId, cell }: CellContentProps) {
       <p className="muted">{cell.fullDescription}</p>
       {cell.reflectionQuestions.length > 0 && (
         <div className="reflection">
-          <h3>Вопрос для размышления</h3>
+          <h3>{tr("Вопрос для размышления")}</h3>
           <p>{cell.reflectionQuestions[0]}</p>
         </div>
       )}

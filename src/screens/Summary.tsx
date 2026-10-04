@@ -1,3 +1,4 @@
+import { tr, useLanguage } from '../i18n/language';
 import { useEffect, useRef } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { setActivePersistedGameId } from '../state/persistence';
@@ -11,6 +12,7 @@ export function Summary({ session, nav }: ScreenProps) {
   const { game } = session;
   const payments = usePayments();
 
+  const language = useLanguage();
   const review = useAiReview(game?.id);
   const { state: aiState, content: aiContent, error: aiError } = review;
   const shortReview = () => { void review.start('short'); };
@@ -32,9 +34,9 @@ export function Summary({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-summary">
-      <h1>Итог партии</h1>
-      <p className="muted">Запрос: {game.request}</p>
-      <p className="muted">Ходов всего: {game.turns.length}</p>
+      <h1>{tr("Итог партии")}</h1>
+      <p className="muted">{tr("Запрос:")} {game.request}</p>
+      <p className="muted">{tr("Ходов всего:")} {game.turns.length}</p>
       {game.turns.length > 0 && (
         <ol className="history-list">
           {game.turns.map((turn, i) => (
@@ -44,33 +46,36 @@ export function Summary({ session, nav }: ScreenProps) {
       )}
 
       <div className="ai-review-section">
-        {aiState === 'checking' && <p className="muted">Проверяем, есть ли уже разбор…</p>}
+        {((aiState === 'ready' && review.language && review.language !== language) ||
+          (review.shortContent && review.shortLanguage && review.shortLanguage !== language)) &&
+          <p className="muted">{tr('Сохранённый разбор остаётся на языке, на котором был создан.')}</p>}
+        {aiState === 'checking' && <p className="muted">{tr("Проверяем, есть ли уже разбор…")}</p>}
 
         {review.shortContent && !(aiState === 'ready' && review.kind === 'full') && (
-          <><h2>Краткий разбор</h2><p className="ai-review-content">{review.shortContent}</p></>
+          <><h2>{tr("Краткий разбор")}</h2><p className="ai-review-content">{review.shortContent}</p></>
         )}
         {aiState === 'ready' && review.kind === 'full' && aiContent && (
-          <><h2>Полный разбор</h2><p className="ai-review-content">{aiContent}</p></>
+          <><h2>{tr("Полный разбор")}</h2><p className="ai-review-content">{aiContent}</p></>
         )}
-        {(aiState === 'pending' || aiState === 'starting') && <p className="muted">{review.kind === 'short' ? 'Краткий' : 'Полный'} разбор генерируется…</p>}
-        {aiState === 'failed' && <p className="screen-error">{aiError ?? 'Не удалось создать разбор.'}</p>}
-        {aiState === 'locked' && <p className="muted">{review.kind === 'full' ? 'Для полного разбора нужен купленный кредит.' : 'Бесплатный краткий разбор уже использован.'}</p>}
+        {(aiState === 'pending' || aiState === 'starting') && <p className="muted">{review.kind === 'short' ? tr("Краткий") : tr("Полный")} {tr("разбор генерируется…")}</p>}
+        {aiState === 'failed' && <p className="screen-error">{aiError ?? tr("Не удалось создать разбор.")}</p>}
+        {aiState === 'locked' && <p className="muted">{review.kind === 'full' ? tr("Для полного разбора нужен купленный кредит.") : tr("Бесплатный краткий разбор уже использован.")}</p>}
 
         {!['checking', 'pending', 'starting'].includes(aiState) && !(aiState === 'ready' && review.kind === 'full') && (
           <>
             {!review.shortContent && (payments.entitlements?.freeAiReviewsRemaining ?? 0) > 0 && (
-              <button className="primary" onClick={shortReview}>Получить краткий разбор бесплатно</button>
+              <button className="primary" onClick={shortReview}>{tr("Получить краткий разбор бесплатно")}</button>
             )}
-            <p className="muted">Полный разбор подробно связывает путь партии с вашим запросом. Он оплачивается отдельно.</p>
+            <p className="muted">{tr("Полный разбор подробно связывает путь партии с вашим запросом. Он оплачивается отдельно.")}</p>
             {(payments.entitlements?.paidAiReviews ?? 0) > 0 ? (
-              <button className="primary" onClick={fullReview}>Получить полный разбор · 1 купленный кредит</button>
+              <button className="primary" onClick={fullReview}>{tr("Получить полный разбор · 1 купленный кредит")}</button>
             ) : reviewProduct ? (
-              <ProductPurchaseButton product={reviewProduct} label={`Купить полный разбор — ${formatProductPrice(reviewProduct)}`} />
+              <ProductPurchaseButton product={reviewProduct} label={tr("Купить полный разбор — {0}", formatProductPrice(reviewProduct))} />
             ) : <button onClick={() => { void payments.refresh(); }} disabled={payments.loading}>
-              {payments.loading ? 'Загружаем цену…' : 'Загрузить варианты оплаты'}
+              {payments.loading ? tr("Загружаем цену…") : tr("Загрузить варианты оплаты")}
             </button>}
             {reviewProduct?.tribute && <TributePaymentNotice loading={payments.loading} onRefresh={() => { void payments.refresh(); }} />}
-            {aiState === 'failed' && <button onClick={() => { void review.start(review.kind); }}>Повторить запрос разбора</button>}
+            {aiState === 'failed' && <button onClick={() => { void review.start(review.kind); }}>{tr("Повторить запрос разбора")}</button>}
           </>
         )}
 
@@ -83,9 +88,7 @@ export function Summary({ session, nav }: ScreenProps) {
           session.reset();
           nav.resetTo('Splash');
         }}
-      >
-        Начать заново
-      </button>
+      >{tr("Начать заново")} </button>
     </div>
   );
 }

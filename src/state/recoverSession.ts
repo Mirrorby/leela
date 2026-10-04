@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import { getAccountFromServer, getGameFromServer, WorkerApiError } from '../api/workerClient';
 import { setStorageOwner, getStorageOwner, getLegacyActiveGameId, clearLegacyActiveGameId } from '../storage/localStorage';
 import { getActivePersistedGameId, loadPersistedGame, persistGame, removePersistedGame, setActivePersistedGameId, snapshotFromServer, resumeGameSnapshot } from './persistence';
@@ -35,7 +36,7 @@ export async function recoverSession(
   } catch (error) {
     if (!isCurrent() || getStorageOwner() !== account.telegramId) return null;
     if (cached && canUseOfflineCache(error)) {
-      return { record: resumeGameSnapshot(cached), notice: 'Нет связи с сервером — открыта сохранённая копия партии. Броски станут доступны после восстановления соединения.' };
+      return { record: resumeGameSnapshot(cached), notice: tr("Нет связи с сервером — открыта сохранённая копия партии. Броски станут доступны после восстановления соединения.") };
     }
     if (error instanceof WorkerApiError && [401, 403, 404].includes(error.status)) {
       if (ownedId) removePersistedGame(ownedId);
@@ -44,7 +45,7 @@ export async function recoverSession(
       if (error.status !== 404) setStorageOwner(null);
     }
     return { record: null, notice: error instanceof WorkerApiError && error.status === 404
-      ? 'Эта партия недоступна. Остальные сохранённые партии можно открыть в «Мои партии».'
-      : 'Не удалось восстановить партию. Повторите подключение или откройте «Мои партии».' };
+      ? tr("Эта партия недоступна. Остальные сохранённые партии можно открыть в «Мои партии».")
+      : tr("Не удалось восстановить партию. Повторите подключение или откройте «Мои партии».") };
   }
 }

@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import type { CellContent, Turn } from '../types/game';
 
 /**
@@ -37,7 +38,7 @@ export function MoveTile({
       <div className="history-main">
         <div className="history-move">
           {isBirth ? (
-            <span className="history-birth">Рождение</span>
+            <span className="history-birth">{tr("Рождение")}</span>
           ) : (
             <span className="history-cell">
               №{turn.startCell}
@@ -53,7 +54,7 @@ export function MoveTile({
           </span>
           {hasTransition && (
             <span className={`history-transition-badge${isSnake ? ' snake' : ' arrow'}`}>
-              {isSnake ? 'змея' : 'стрела'} · через {turn.landedCell}
+              {isSnake ? tr("змея") : tr("стрела")} {tr("· через")} {turn.landedCell}
             </span>
           )}
         </div>

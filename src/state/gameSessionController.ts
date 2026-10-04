@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import type { DiceMode, GameState, RollEvent } from '../types/game';
 import { createGameOnServer, getGameFromServer, rollOnServer, WorkerApiError } from '../api/workerClient';
 import { getStorageOwner, setStorageOwner } from '../storage/localStorage';
@@ -59,7 +60,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
     clearError() { update({ error: null }); },
     reset,
     restore(record: PersistedGame) {
-      if (!isSessionSnapshot(record)) throw new Error('Некорректное сохранение партии');
+      if (!isSessionSnapshot(record)) throw new Error(tr("Некорректное сохранение партии"));
       epoch++; revision++;
       pendingStart = pendingRoll = null;
       update({ game: record.game, request: record.game.request, diceMode: record.game.diceMode,
@@ -70,7 +71,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
       update({ isBusy: false });
     },
     async openGame(gameId: string) {
-      if (snapshot.isBusy) throw new Error('Дождитесь завершения текущего запроса');
+      if (snapshot.isBusy) throw new Error(tr("Дождитесь завершения текущего запроса"));
       const operation = token();
       const cached = loadPersistedGame(gameId);
       update({ isBusy: true, error: null });
@@ -100,12 +101,12 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         setActivePersistedGameId(record.id);
         return record;
       } catch (error) {
-        if (current(operation)) update({ error: message(error, 'Не удалось открыть партию — попробуйте обновить список.') });
+        if (current(operation)) update({ error: message(error, tr("Не удалось открыть партию — попробуйте обновить список.")) });
         throw error;
       } finally { if (current(operation)) update({ isBusy: false }); }
     },
     async startGame(overrides?: { diceMode?: DiceMode }) {
-      if (snapshot.isBusy) throw new Error('Запрос уже выполняется');
+      if (snapshot.isBusy) throw new Error(tr("Запрос уже выполняется"));
       // A retry preserves the original payload as well as its key.
       pendingStart ??= { id: id(), request: snapshot.request, mode: overrides?.diceMode ?? snapshot.diceMode };
       const request = pendingStart;
@@ -124,17 +125,17 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         if (error instanceof WorkerApiError && [401, 403].includes(error.status)) {
           reset();
           setStorageOwner(null);
-          update({ error: 'Перезапустите игру через Telegram, чтобы подтвердить аккаунт.' });
+          update({ error: tr("Перезапустите игру через Telegram, чтобы подтвердить аккаунт.") });
           throw error;
         }
-        if (!isPaywall) update({ error: message(error, 'Не удалось создать партию — проверьте соединение.') });
+        if (!isPaywall) update({ error: message(error, tr("Не удалось создать партию — проверьте соединение.")) });
         throw error;
       } finally { if (current(operation)) update({ isBusy: false }); }
     },
     async roll(value?: number) {
       const game = snapshot.game;
-      if (!game) throw new Error('Партия ещё не создана');
-      if (snapshot.isBusy) throw new Error('Запрос уже выполняется');
+      if (!game) throw new Error(tr("Партия ещё не создана"));
+      if (snapshot.isBusy) throw new Error(tr("Запрос уже выполняется"));
       if (!pendingRoll || pendingRoll.gameId !== game.id) pendingRoll = { gameId: game.id, id: id(), value, mode: game.diceMode };
       const request = pendingRoll;
       const operation = token();
@@ -157,7 +158,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
           removePersistedGame(game.id);
           reset();
           if (error.status !== 404) setStorageOwner(null);
-          update({ error: 'Партия недоступна. Откройте «Мои партии» или перезапустите игру через Telegram.' });
+          update({ error: tr("Партия недоступна. Откройте «Мои партии» или перезапустите игру через Telegram.") });
           throw error;
         }
         if (error instanceof WorkerApiError && error.status === 409
@@ -170,7 +171,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
             clearHints(fresh);
           } catch { requireCurrent(operation); }
         }
-        update({ error: message(error, 'Не удалось отправить бросок — проверьте соединение.') });
+        update({ error: message(error, tr("Не удалось отправить бросок — проверьте соединение.")) });
         throw error;
       } finally { if (current(operation)) update({ isBusy: false }); }
     },
@@ -187,7 +188,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
           removePersistedGame(gameId);
           reset();
           if (error.status !== 404) setStorageOwner(null);
-          update({ error: 'Партия недоступна. Откройте «Мои партии» или перезапустите игру через Telegram.' });
+          update({ error: tr("Партия недоступна. Откройте «Мои партии» или перезапустите игру через Telegram.") });
         }
       }
     },

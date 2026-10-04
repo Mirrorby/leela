@@ -1,3 +1,4 @@
+import { tr, getLanguage } from '../i18n/language';
 import type { DiceMode, GameState, RollEvent } from '../types/game';
 import { isGameState, isRollEvents } from '../game/validateGameState';
 import type { Product, Entitlements } from '../types/payments';
@@ -50,15 +51,15 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 15_
     }
     if (!res.ok) {
       const errorBody = body as ErrorBody | null;
-      throw new WorkerApiError(errorBody?.detail ?? errorBody?.error ?? res.statusText ?? 'Неизвестная ошибка сервера', res.status, body);
+      throw new WorkerApiError(apiErrorMessage(errorBody, res.status), res.status, body);
     }
     return body as T;
   } catch (error) {
     if (error instanceof WorkerApiError) throw error;
     throw new WorkerApiError(
       controller?.signal.aborted
-        ? 'Сервер не ответил вовремя. Проверьте соединение и повторите запрос.'
-        : 'Нет соединения с сервером — проверь интернет и попробуй ещё раз.',
+        ? tr("Сервер не ответил вовремя. Проверьте соединение и повторите запрос.")
+        : tr("Нет соединения с сервером — проверь интернет и попробуй ещё раз."),
       0, null
     );
   } finally {
@@ -102,7 +103,7 @@ export async function listGamesOnServer(options: { cursor?: string | null; limit
   const query = params.toString();
   const page = await apiFetch<GamesPage>(`/api/v1/games${query ? `?${query}` : ''}`);
   if (!page || !Array.isArray(page.games) || !(page.nextCursor === null || typeof page.nextCursor === 'string')) {
-    throw new WorkerApiError('Сервер вернул некорректную историю. Попробуйте обновить список.', 502, { error: 'invalid_response' });
+    throw new WorkerApiError(tr("Сервер вернул некорректную историю. Попробуйте обновить список."), 502, { error: 'invalid_response' });
   }
   return { games: page.games.map((game) => checkedGame(game)), nextCursor: page.nextCursor };
 }
@@ -114,7 +115,7 @@ export async function getGameFromServer(gameId: string): Promise<GameState> {
 
 function checkedGame(value: unknown, expectedId?: string): GameState {
   if (!isGameState(value) || (expectedId && value.id !== expectedId)) {
-    throw new WorkerApiError('Не удалось прочитать партию. Попробуйте загрузить её снова.', 502, { error: 'invalid_response' });
+    throw new WorkerApiError(tr("Не удалось прочитать партию. Попробуйте загрузить её снова."), 502, { error: 'invalid_response' });
   }
   return value;
 }
@@ -122,7 +123,7 @@ function checkedGame(value: unknown, expectedId?: string): GameState {
 export async function getAccountFromServer(): Promise<{ telegramId: string }> {
   const result = await apiFetch<{ telegramId: string }>('/api/v1/me');
   if (!result || typeof result.telegramId !== 'string' || !/^[1-9]\d*$/.test(result.telegramId)) {
-    throw new WorkerApiError('Не удалось подтвердить Telegram-аккаунт.', 502, { error: 'invalid_response' });
+    throw new WorkerApiError(tr("Не удалось подтвердить Telegram-аккаунт."), 502, { error: 'invalid_response' });
   }
   return result;
 }
@@ -159,7 +160,7 @@ export async function rollOnServer(
     body: JSON.stringify(body),
   });
   if (!result || !isRollEvents(result.events) || !Number.isInteger(result.value) || result.value < 1 || result.value > 6) {
-    throw new WorkerApiError('Не удалось прочитать результат броска. Повторите запрос.', 502, { error: 'invalid_response' });
+    throw new WorkerApiError(tr("Не удалось прочитать результат броска. Повторите запрос."), 502, { error: 'invalid_response' });
   }
   return { ...result, game: checkedGame(result.game, gameId) };
 }
@@ -180,6 +181,8 @@ export async function getEntitlementsFromServer(): Promise<Entitlements> {
 
 export type ReviewKind = 'short' | 'full';
 export interface AiReviewStatus {
+  language?: 'ru' | 'en';
+  shortLanguage?: 'ru' | 'en' | null;
   kind?: ReviewKind;
   shortContent?: string | null;
   status: 'none' | 'pending' | 'ready' | 'failed';
@@ -191,7 +194,7 @@ export interface AiReviewStatus {
  * просмотр, бесплатно, см. §11 ТЗ) — apiFetch не различает эти статусы
  * отдельно, тело ответа в обоих случаях содержит актуальный AiReviewStatus. */
 export async function startAiReviewOnServer(gameId: string, kind: ReviewKind = 'short'): Promise<AiReviewStatus> {
-  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', body: JSON.stringify({ kind }) }, 15_000);
+  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', body: JSON.stringify({ kind, language: getLanguage() }) }, 15_000);
 }
 
 export async function getAiReviewFromServer(gameId: string): Promise<AiReviewStatus> {
@@ -207,4 +210,12 @@ export async function logClientAnalyticsEvent(event: 'ai_offer_shown'): Promise<
     method: 'POST',
     body: JSON.stringify({ event }),
   });
+}
+
+function apiErrorMessage(body: ErrorBody | null, status: number): string {
+  if (body?.detail && (getLanguage() === 'ru' || !/[а-яё]/i.test(body.detail))) return tr(body.detail);
+  if (status === 401 || status === 403) return tr('Откройте игру через Telegram, чтобы получить доступ к своим партиям.');
+  if (status === 402) return tr('Партии закончились');
+  if (status === 404) return tr('Партия недоступна. Откройте «Мои партии» или перезапустите игру через Telegram.');
+  return getLanguage() === 'en' ? 'The request could not be completed. Please try again.' : body?.detail ?? tr('Неизвестная ошибка сервера');
 }

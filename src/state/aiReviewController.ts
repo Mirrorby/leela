@@ -1,8 +1,11 @@
+import { tr } from '../i18n/language';
 import { WorkerApiError, type ReviewKind, type AiReviewStatus } from '../api/workerClient';
 
 export type AiState = 'checking' | 'none' | 'starting' | 'pending' | 'ready' | 'failed' | 'locked';
 export interface AiReviewSnapshot {
   state: AiState;
+  language?: 'ru' | 'en';
+  shortLanguage?: 'ru' | 'en' | null;
   kind: ReviewKind;
   shortContent: string | null;
   content: string | null;
@@ -22,6 +25,8 @@ export function createAiReviewController(api: ReviewApi, onChange: (value: AiRev
   let state: AiState = 'checking';
   let kind: ReviewKind = 'short';
   let shortContent: string | null = null;
+  let language: 'ru' | 'en' | undefined;
+  let shortLanguage: 'ru' | 'en' | null | undefined;
   let disposed = false;
   let epoch = 0;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
@@ -36,7 +41,7 @@ export function createAiReviewController(api: ReviewApi, onChange: (value: AiRev
     if (disposed) return;
     state = next;
     if (next !== 'pending') clearTimers();
-    onChange({ state, content, error, kind, shortContent });
+    onChange({ state, content, error, kind, shortContent, language, shortLanguage });
   }
   function schedulePoll() {
     if (disposed || state !== 'pending' || pollTimer) return;
@@ -57,19 +62,21 @@ export function createAiReviewController(api: ReviewApi, onChange: (value: AiRev
     if (!deadlineTimer) {
       deadlineTimer = setTimeout(() => {
         epoch++;
-        publish('failed', null, 'Не удалось узнать результат разбора. Проверьте соединение и повторите запрос — сервер сохранит готовый результат.');
+        publish('failed', null, tr("Не удалось узнать результат разбора. Проверьте соединение и повторите запрос — сервер сохранит готовый результат."));
       }, REVIEW_WAIT_LIMIT_MS);
     }
     schedulePoll();
   }
   function apply(result: AiReviewStatus) {
+    if (result.language) language = result.language;
+    if (result.shortLanguage !== undefined) shortLanguage = result.shortLanguage;
     if (result.kind) kind = result.kind;
     else if (result.status === 'ready') kind = 'full';
     if (result.shortContent !== undefined) shortContent = result.shortContent;
     if (kind === 'short' && result.status === 'ready') shortContent = result.content ?? shortContent;
     if (result.status === 'pending') pending();
     else if (result.status === 'ready') publish('ready', result.content ?? null);
-    else if (result.status === 'failed') publish('failed', null, result.error ?? 'Не удалось создать разбор. Попробуйте ещё раз.');
+    else if (result.status === 'failed') publish('failed', null, result.error ? tr(result.error) : tr("Не удалось создать разбор. Попробуйте ещё раз."));
     else publish('none');
   }
 
@@ -81,7 +88,7 @@ export function createAiReviewController(api: ReviewApi, onChange: (value: AiRev
         const result = await api.get();
         if (!disposed && operation === epoch) apply(result);
       } catch {
-        if (!disposed && operation === epoch) publish('failed', null, 'Не удалось проверить разбор — проверьте соединение.');
+        if (!disposed && operation === epoch) publish('failed', null, tr("Не удалось проверить разбор — проверьте соединение."));
       }
     },
     async start(requestedKind: ReviewKind = 'short') {
@@ -110,7 +117,7 @@ export function createAiReviewController(api: ReviewApi, onChange: (value: AiRev
             if (!disposed && operation === epoch) publish('failed', null, error.message);
           }
         } else {
-          publish('failed', null, error instanceof WorkerApiError ? error.message : 'Не удалось запросить разбор — проверьте соединение.');
+          publish('failed', null, error instanceof WorkerApiError ? error.message : tr("Не удалось запросить разбор — проверьте соединение."));
         }
       }
     },

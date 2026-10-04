@@ -1,3 +1,4 @@
+import { tr, getLanguage } from '../i18n/language';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { MoveTile } from '../components/MoveTile';
 
@@ -21,13 +22,13 @@ export function History({ session, nav }: ScreenProps) {
   return (
     <div className="screen screen-history">
       <div className="screen-header-row">
-        <h1>История ходов</h1>
-        <button className="icon-button" aria-label="В меню" onClick={() => nav.resetTo('Splash')}>
+        <h1>{tr("История ходов")}</h1>
+        <button className="icon-button" aria-label={tr("В меню")} onClick={() => nav.resetTo('Splash')}>
           ☰
         </button>
       </div>
       {game.turns.length === 0 ? (
-        <p className="muted">Ходов пока не было — брось кубик, и они появятся здесь.</p>
+        <p className="muted">{tr("Ходов пока не было — брось кубик, и они появятся здесь.")}</p>
       ) : (
         <>
           <p className="muted history-count">
@@ -40,15 +41,17 @@ export function History({ session, nav }: ScreenProps) {
           </ol>
         </>
       )}
-      <button onClick={() => nav.pop()}>Назад</button>
+      <button onClick={() => nav.pop()}>{tr("Назад")}</button>
     </div>
   );
 }
 
 function turnsWord(n: number): string {
+  if (getLanguage() === 'en') return n === 1 ? 'move' : 'moves';
   const mod10 = n % 10;
+  if (getLanguage() === 'en') return n === 1 ? 'move' : 'moves';
   const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'ход';
-  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'хода';
-  return 'ходов';
+  if (mod10 === 1 && mod100 !== 11) return tr("ход");
+  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return tr("хода");
+  return tr("ходов");
 }

@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import type { BoardCoordinates } from '../types/board';
 import classicV1Coordinates from '../data/board/classic-v1-coordinates.json';
 
@@ -28,7 +29,7 @@ const BOARD_OVERLAY_IMAGES: Partial<Record<string, string[]>> = {
 export function getBoardCoordinates(rulesetId: string): BoardCoordinates {
   const coords = BOARD_COORDINATES[rulesetId];
   if (!coords) {
-    throw new Error(`Нет координатной раскладки доски для ruleset "${rulesetId}"`);
+    throw new Error(tr("Нет координатной раскладки доски для ruleset \"{0}\"", rulesetId));
   }
   return coords;
 }
@@ -36,7 +37,7 @@ export function getBoardCoordinates(rulesetId: string): BoardCoordinates {
 export function getBoardImageSrc(rulesetId: string): string {
   const path = BOARD_IMAGES[rulesetId];
   if (!path) {
-    throw new Error(`Нет изображения доски для ruleset "${rulesetId}"`);
+    throw new Error(tr("Нет изображения доски для ruleset \"{0}\"", rulesetId));
   }
   return `${import.meta.env.BASE_URL}${path}`;
 }

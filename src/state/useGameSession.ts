@@ -1,3 +1,4 @@
+import { useLanguage } from '../i18n/language';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { getRuleset, getContentPack } from '../game/ruleset';
 import { createGameSessionController } from './gameSessionController';
@@ -9,9 +10,10 @@ export function useGameSession() {
   const [controller] = useState(() => createGameSessionController());
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useEffect(() => () => controller.cancelPending(), [controller]);
+  const language = useLanguage();
   const activeRuleset = state.game?.rulesetId ?? 'classic-v1';
   const ruleset = getRuleset(activeRuleset);
-  const content = getContentPack(activeRuleset, 'ru');
+  const content = getContentPack(activeRuleset, language);
   const cellById = useCallback((id: number) => content.cells.find((cell) => cell.id === id), [content]);
   return { ...state, ...controller, ruleset, content, cellById };
 }

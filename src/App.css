@@ -826,3 +826,21 @@ button.icon-button {
   opacity: 0.75;
   padding: 8px 14px;
 }
+
+.language-control {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem 0;
+  font-size: .8rem;
+}
+.language-control select {
+  color: var(--text, #302218);
+  background: var(--surface, #fff8eb);
+  border: 1px solid currentColor;
+  border-radius: .5rem;
+  padding: .35rem;
+  max-width: 10rem;
+  font: inherit;
+}

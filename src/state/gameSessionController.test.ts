@@ -1,10 +1,12 @@
+import { setLanguagePreference } from '../i18n/language';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createGameSessionController } from './gameSessionController';
 import { makeGame, makeSnapshot, memoryStorage, deferred } from '../testUtils/fixtures';
 import { WorkerApiError, type RollResult } from '../api/workerClient';
 import { setStorageOwner } from '../storage/localStorage';
 describe('game session request fencing', () => {
-  beforeEach(() => { vi.stubGlobal('window', { localStorage: memoryStorage() }); setStorageOwner('111'); });
+  beforeEach(() => {
+    setLanguagePreference('ru'); vi.stubGlobal('window', { localStorage: memoryStorage() }); setStorageOwner('111'); });
   afterEach(() => { setStorageOwner(null); vi.unstubAllGlobals(); });
   function fixture() {
     const create = vi.fn().mockResolvedValue(makeGame());

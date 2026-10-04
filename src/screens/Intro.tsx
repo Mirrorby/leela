@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { hasSeenOnboarding } from '../state/persistence';
 
@@ -20,16 +21,11 @@ export function Intro({ nav }: ScreenProps) {
 
   return (
     <div className="screen screen-centered">
-      <h1>Лила — игра-трансформация</h1>
-      <p>
-        Лила — древняя игра духовного развития. Ты формулируешь запрос, а движение фишки по полю
-        через броски кубика становится зеркалом твоего пути.
-      </p>
-      <p className="muted">Первая партия и один краткий ИИ-разбор — бесплатно. Следующие партии и полный разбор можно купить отдельно.</p>
-      <button className="primary" onClick={startGame}>
-        Начать
-      </button>
-      <button onClick={() => nav.push('HowToPlay', { mode: 'replay' })}>Как играть</button>
+      <h1>{tr("Лила — игра-трансформация")}</h1>
+      <p>{tr("Лила — древняя игра духовного развития. Ты формулируешь запрос, а движение фишки по полю\n        через броски кубика становится зеркалом твоего пути.")} </p>
+      <p className="muted">{tr("Первая партия и один краткий ИИ-разбор — бесплатно. Следующие партии и полный разбор можно купить отдельно.")}</p>
+      <button className="primary" onClick={startGame}>{tr("Начать")} </button>
+      <button onClick={() => nav.push('HowToPlay', { mode: 'replay' })}>{tr("Как играть")}</button>
     </div>
   );
 }

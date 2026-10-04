@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import { useEffect, type ReactNode } from 'react';
 import './Modal.css';
 
@@ -43,7 +44,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
           <div className="modal-header">
             {title ? <div className="modal-title">{title}</div> : <div />}
             {onClose && (
-              <button className="modal-close" aria-label="Закрыть" onClick={onClose}>
+              <button className="modal-close" aria-label={tr("Закрыть")} onClick={onClose}>
                 ✕
               </button>
             )}

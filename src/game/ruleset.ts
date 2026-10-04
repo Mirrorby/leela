@@ -1,5 +1,6 @@
 import type { Ruleset, ContentPack } from '../types/game';
 import classicV1 from '../data/rulesets/classic-v1.json';
+import classicV1ContentEn from '../data/content/en/cells.json';
 import classicV1ContentRu from '../data/content/ru/cells.json';
 
 // Реестр доступных ruleset'ов. При добавлении новой версии — просто
@@ -12,6 +13,7 @@ const RULESETS: Record<string, Ruleset> = {
 
 const CONTENT_PACKS: Record<string, ContentPack> = {
   'classic-v1-ru': classicV1ContentRu as ContentPack,
+  'classic-v1-en': classicV1ContentEn as ContentPack,
 };
 
 export function getRuleset(rulesetId: string): Ruleset {

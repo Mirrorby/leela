@@ -28,6 +28,18 @@ function makeGame(overrides: Partial<GameState> = {}): GameState {
 }
 
 describe('buildReviewPrompt', () => {
+  it('uses English instructions, names and descriptions while preserving the original intention', () => {
+    for (const kind of ['short', 'full'] as const) {
+      const prompt = buildReviewPrompt(makeGame({ request: 'Original intention' }), kind, 'en');
+      expect(prompt).toContain('in English');
+      expect(prompt).toContain('Original intention');
+      expect(prompt).toContain('Greed');
+      expect(prompt).toContain('transition');
+      expect(prompt).not.toMatch(/[а-яё]/i);
+      expect(prompt).toContain(kind === 'short' ? '70–100 words' : '3–5 paragraphs');
+    }
+  });
+
   it('включает исходный запрос игрока дословно', () => {
     const prompt = buildReviewPrompt(makeGame());
     expect(prompt).toContain('Хочу понять, как двигаться дальше в карьере');

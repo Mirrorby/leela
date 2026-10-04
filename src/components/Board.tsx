@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardCoordinates } from '../types/board';
 import './Board.css';
@@ -117,7 +118,7 @@ export function Board({
   return (
     <div className={`board-wrap${className ? ` ${className}` : ''}`}>
       <div className="board-stage" style={{ aspectRatio: viewBox.split(' ').slice(2).join(' / ') }}>
-        <img className="board-bg" src={imageSrc} alt="Игровое поле Лила" draggable={false} />
+        <img className="board-bg" src={imageSrc} alt={tr("Игровое поле Лила")} draggable={false} />
         {overlayImageSrcs?.map((src) => (
           <img key={src} className="board-overlay-art" src={src} alt="" draggable={false} aria-hidden="true" />
         ))}
@@ -127,7 +128,7 @@ export function Board({
           viewBox={viewBox}
           preserveAspectRatio="xMidYMid meet"
           role="group"
-          aria-label="Клетки поля, 72 штуки"
+          aria-label={tr("Клетки поля, 72 штуки")}
         >
           <defs>
             <radialGradient id="board-special-glow" cx="50%" cy="50%" r="55%">
@@ -144,7 +145,7 @@ export function Board({
                 className={`board-cell${special ? ' board-cell--special' : ''}`}
                 role={onCellTap ? 'button' : undefined}
                 tabIndex={onCellTap ? 0 : undefined}
-                aria-label={`Клетка ${cell.cellId}${special ? ', особая зона' : ''}`}
+                aria-label={tr("Клетка {0}{1}", cell.cellId, special ? tr(', особая зона') : '')}
                 onClick={onCellTap ? () => onCellTap(cell.cellId) : undefined}
                 onKeyDown={
                   onCellTap

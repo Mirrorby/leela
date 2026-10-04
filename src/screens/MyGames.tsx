@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { WorkerApiError } from '../api/workerClient';
@@ -12,10 +13,10 @@ import {
 import { gameResumeScreen } from '../state/resolveGameScreen';
 
 const STATUS_LABELS: Record<string, string> = {
-  WAITING_FOR_BIRTH: 'ждёт рождения',
-  IN_PROGRESS: 'в игре',
-  FINISHED: 'завершена',
-  ARCHIVED: 'в архиве',
+  WAITING_FOR_BIRTH: "ждёт рождения",
+  IN_PROGRESS: "в игре",
+  FINISHED: "завершена",
+  ARCHIVED: "в архиве",
 };
 
 const PAGE_SIZE = 20;
@@ -73,7 +74,7 @@ export function MyGames({ session, nav }: ScreenProps) {
         accessDenied(error);
         setEntries([]);
         setNextCursor(null);
-        setListError(error instanceof WorkerApiError ? error.message : 'Не удалось загрузить партии — попробуйте ещё раз.');
+        setListError(error instanceof WorkerApiError ? error.message : tr("Не удалось загрузить партии — попробуйте ещё раз."));
       })
       .finally(() => { if (generationRef.current === generation) setLoading(false); });
   }, [accessDenied]);
@@ -101,7 +102,7 @@ export function MyGames({ session, nav }: ScreenProps) {
       .catch((error) => {
         if (generationRef.current !== generation) return;
         accessDenied(error);
-        setListError(error instanceof WorkerApiError ? error.message : 'Не удалось загрузить ещё партии — проверьте соединение.');
+        setListError(error instanceof WorkerApiError ? error.message : tr("Не удалось загрузить ещё партии — проверьте соединение."));
       })
       .finally(() => {
         if (generationRef.current !== generation) return;
@@ -122,7 +123,7 @@ export function MyGames({ session, nav }: ScreenProps) {
       if (generationRef.current !== generation || error instanceof SessionSupersededError) return;
       accessDenied(error);
       if (error instanceof WorkerApiError && error.status === 404) setEntries((prev) => prev.filter((item) => item.id !== entry.id));
-      setListError('Не удалось открыть партию. Попробуйте обновить список или перезапустить игру через Telegram.');
+      setListError(tr("Не удалось открыть партию. Попробуйте обновить список или перезапустить игру через Telegram."));
     } finally {
       if (generationRef.current === generation) setOpeningId(null);
     }
@@ -138,8 +139,8 @@ export function MyGames({ session, nav }: ScreenProps) {
     // этом устройстве.
     const confirmed = window.confirm(
       isActive
-        ? 'Скрыть текущую партию из этого списка на этом устройстве? Сама партия останется сохранённой на сервере.'
-        : 'Скрыть эту партию из списка на этом устройстве? Сама партия останется сохранённой на сервере.'
+        ? tr("Скрыть текущую партию из этого списка на этом устройстве? Сама партия останется сохранённой на сервере.")
+        : tr("Скрыть эту партию из списка на этом устройстве? Сама партия останется сохранённой на сервере.")
     );
     if (!confirmed) return;
 
@@ -154,7 +155,7 @@ export function MyGames({ session, nav }: ScreenProps) {
 
   const handleNewGame = () => {
     if (session.game && session.game.status !== 'FINISHED') {
-      const confirmed = window.confirm('Начать новую партию? Текущая останется сохранённой в этом списке.');
+      const confirmed = window.confirm(tr("Начать новую партию? Текущая останется сохранённой в этом списке."));
       if (!confirmed) return;
     }
     session.reset();
@@ -163,45 +164,43 @@ export function MyGames({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-my-games">
-      <h1>Мои партии</h1>
-      {offline && <p className="muted screen-notice">Нет связи с сервером — показаны партии, сохранённые на этом устройстве.</p>}
-      {loading && entries.length === 0 && <p className="muted">Загрузка…</p>}
-      {!loading && !listError && entries.length === 0 && <p className="muted">Сохранённых партий пока нет.</p>}
+      <h1>{tr("Мои партии")}</h1>
+      {offline && <p className="muted screen-notice">{tr("Нет связи с сервером — показаны партии, сохранённые на этом устройстве.")}</p>}
+      {loading && entries.length === 0 && <p className="muted">{tr("Загрузка…")}</p>}
+      {!loading && !listError && entries.length === 0 && <p className="muted">{tr("Сохранённых партий пока нет.")}</p>}
       <ul className="game-list">
         {entries.map((entry) => (
           <li key={entry.id} className="game-list-item">
             <div>
-              <strong>{entry.game.request || '(без запроса)'}</strong>
+              <strong>{entry.game.request || tr("(без запроса)")}</strong>
               <div className="muted">
-                {STATUS_LABELS[entry.game.status] ?? entry.game.status} · клетка {entry.game.currentCell}
+                {tr(STATUS_LABELS[entry.game.status] ?? entry.game.status)} {tr("· клетка")} {entry.game.currentCell}
               </div>
             </div>
             <div className="game-list-actions">
               <button onClick={() => { void handleContinue(entry); }} disabled={openingId !== null || session.isBusy}>
-                {openingId === entry.id ? 'Открываем…' : 'Продолжить'}
+                {openingId === entry.id ? tr("Открываем…") : tr("Продолжить")}
               </button>
-              <button className="danger" onClick={() => handleDelete(entry)} disabled={openingId !== null}>
-                Удалить
-              </button>
+              <button className="danger" onClick={() => handleDelete(entry)} disabled={openingId !== null}>{tr("Удалить")} </button>
             </div>
           </li>
         ))}
       </ul>
       {listError && <p className="screen-error">{listError}</p>}
       <button onClick={loadFirstPage} disabled={loading || openingId !== null}>
-        {loading ? 'Обновляем…' : 'Обновить список'}
+        {loading ? tr("Обновляем…") : tr("Обновить список")}
       </button>
       {nextCursor && !offline && (
         <button onClick={loadMore} disabled={loadingMore}>
-          {loadingMore ? 'Загрузка…' : 'Загрузить ещё'}
+          {loadingMore ? tr("Загрузка…") : tr("Загрузить ещё")}
         </button>
       )}
-      <button onClick={handleNewGame}>Новая партия</button>
+      <button onClick={handleNewGame}>{tr("Новая партия")}</button>
       {/* Батч 6 монетизации: единственная точка входа на экран "Ваш доступ"
           (§24 ТЗ) — MyGames уже служит своего рода аккаунт-хабом, отдельная
           иконка в topbar GameHome ради этого не заводилась. */}
-      <button onClick={() => nav.push('YourAccess')}>Ваш доступ</button>
-      <button onClick={() => nav.pop()}>Назад</button>
+      <button onClick={() => nav.push('YourAccess')}>{tr("Ваш доступ")}</button>
+      <button onClick={() => nav.pop()}>{tr("Назад")}</button>
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { LanguageControl } from './i18n/LanguageControl';
+import { tr, useLanguage } from './i18n/language';
 import { useCallback, useEffect, useState } from 'react';
 import { useGameSession } from './state/useGameSession';
 import {
@@ -18,6 +20,8 @@ import './App.css';
 // On restart and Continue, resume the board or the completed game's
 // summary. Global menus and History cannot be a game's root screen.
 function App() {
+  const language = useLanguage();
+  useEffect(() => { document.documentElement.lang = language; }, [language]);
   const session = useGameSession();
   const [stack, setStack] = useState<ScreenEntry[]>([{ name: 'Splash' }]);
   const [hydrated, setHydrated] = useState(false);
@@ -55,8 +59,8 @@ function App() {
         session.reset();
         setStack([{ name: 'Splash' }]);
         setRecoveryNotice(error instanceof WorkerApiError && [401, 403].includes(error.status)
-          ? 'Откройте игру через Telegram, чтобы получить доступ к своим партиям.'
-          : 'Не удалось подключиться к серверу. Повторите подключение, чтобы открыть сохранённые партии.');
+          ? tr("Откройте игру через Telegram, чтобы получить доступ к своим партиям.")
+          : tr("Не удалось подключиться к серверу. Повторите подключение, чтобы открыть сохранённые партии."));
       })
       .finally(() => { if (current) setHydrated(true); });
     return () => { current = false; };
@@ -111,16 +115,16 @@ function App() {
   }, [hydrated, session.game, session.lastEvents, session.lastRollValue, session.lastMove, current.name]);
 
   if (!hydrated) {
-    return <div className="app-shell"><p className="muted">Подключаемся к игре…</p></div>;
+    return <div className="app-shell"><LanguageControl /><p className="muted">{tr("Подключаемся к игре…")}</p></div>;
   }
 
   const CurrentScreen = screens[current.name];
 
   return (
-    <div className="app-shell">
+    <div className="app-shell"><LanguageControl />
       {recoveryNotice && <div role="status" className="screen-notice">
         <p>{recoveryNotice}</p>
-        <button onClick={() => setRecoveryAttempt((attempt) => attempt + 1)}>Повторить подключение</button>
+        <button onClick={() => setRecoveryAttempt((attempt) => attempt + 1)}>{tr("Повторить подключение")}</button>
       </div>}
       <CurrentScreen session={session} nav={nav} params={current.params} />
     </div>

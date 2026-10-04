@@ -18,6 +18,18 @@ describe('short preview and paid full review', () => {
     const r = await reserveAiReview(d.db, 'g', '111', 'short');
     await markAiReviewReady(d.db, 'g', r.review.updated_at, 'preview');
   }
+  it('stores each tier’s language and never charges for switching the viewing language', async () => {
+    const preview = await reserveAiReview(d.db, 'g', '111', 'short', 'en');
+    await markAiReviewReady(d.db, 'g', preview.review.updated_at, 'English preview');
+    expect((await reserveAiReview(d.db, 'g', '111', 'short', 'ru'))).toMatchObject({ started: false, view: { language: 'en', content: 'English preview' } });
+    await credit();
+    const full = await reserveAiReview(d.db, 'g', '111', 'full', 'ru');
+    expect(full.view).toMatchObject({ language: 'ru', shortLanguage: 'en', shortContent: 'English preview' });
+    await markAiReviewReady(d.db, 'g', full.review.updated_at, 'Русский полный разбор');
+    expect(await read()).toMatchObject({ language: 'ru', shortLanguage: 'en', content: 'Русский полный разбор' });
+    expect((await reserveAiReview(d.db, 'g', '111', 'full', 'en')).started).toBe(false);
+    expect(await balance()).toMatchObject({ free_ai_reviews_remaining: 0, paid_ai_reviews: 1 });
+  });
   it('full requires a paid credit even if the free preview is unused', async () => {
     await expect(reserveAiReview(d.db, 'g', '111', 'full')).rejects.toThrow(InsufficientBalanceError);
     expect(await balance()).toMatchObject({ free_ai_reviews_remaining: 1, paid_ai_reviews: 0 });

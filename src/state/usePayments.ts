@@ -1,3 +1,4 @@
+import { tr } from '../i18n/language';
 import { useCallback, useEffect, useState } from 'react';
 import type { Entitlements, Product } from '../types/payments';
 import {
@@ -31,7 +32,7 @@ export function usePayments() {
       setEntitlements(ent);
       setProducts(prods);
     } catch (err) {
-      setError(errorMessage(err, 'Не удалось загрузить информацию о балансе — проверь соединение.'));
+      setError(errorMessage(err, tr("Не удалось загрузить информацию о балансе — проверь соединение.")));
     } finally {
       setLoading(false);
     }
