@@ -28,19 +28,19 @@ describe('atomic game creation on real SQLite', () => {
   it('does not debit on an INSERT failure; the same key can be retried safely', async () => {
     database.sqlite.exec("CREATE TRIGGER fail_game BEFORE INSERT ON games BEGIN SELECT RAISE(ABORT, 'failed insert'); END");
     await expect(create('retry')).rejects.toThrow('failed insert');
-    expect(balance()).toEqual({ free_games_remaining: 2, paid_games: 0 });
+    expect(balance()).toEqual({ free_games_remaining: 1, paid_games: 0 });
     expect(count()).toBe(0);
     database.sqlite.exec('DROP TRIGGER fail_game');
     expect((await create('retry')).status).toBe(201);
     expect((await create('retry')).status).toBe(200);
-    expect(balance()).toEqual({ free_games_remaining: 1, paid_games: 0 });
+    expect(balance()).toEqual({ free_games_remaining: 0, paid_games: 0 });
     expect(count()).toBe(1);
   });
 
   it('rolls back the inserted game if the debit fails', async () => {
     database.sqlite.exec("CREATE TRIGGER fail_debit BEFORE UPDATE ON user_balances BEGIN SELECT RAISE(ABORT, 'failed debit'); END");
     await expect(create('debit')).rejects.toThrow('failed debit');
-    expect(balance()).toEqual({ free_games_remaining: 2, paid_games: 0 });
+    expect(balance()).toEqual({ free_games_remaining: 1, paid_games: 0 });
     expect(count()).toBe(0);
     database.sqlite.exec('DROP TRIGGER fail_debit');
     expect((await create('debit')).status).toBe(201);
@@ -52,7 +52,7 @@ describe('atomic game creation on real SQLite', () => {
     expect(responses.map((r) => r.status).sort()).toEqual([200, 200, 201]);
     const bodies = await Promise.all(responses.map((r) => r.json() as Promise<{ game: { id: string } }>));
     expect(new Set(bodies.map((r) => r.game.id)).size).toBe(1);
-    expect(balance()).toEqual({ free_games_remaining: 1, paid_games: 0 });
+    expect(balance()).toEqual({ free_games_remaining: 0, paid_games: 0 });
     expect(count()).toBe(1);
   });
 
@@ -69,7 +69,7 @@ describe('atomic game creation on real SQLite', () => {
     const second = await create('delayed'); release();
     expect(second.status).toBe(201);
     expect((await first).status).toBe(200);
-    expect(balance()).toEqual({ free_games_remaining: 1, paid_games: 0 });
+    expect(balance()).toEqual({ free_games_remaining: 0, paid_games: 0 });
     expect(count()).toBe(1);
   });
 
@@ -101,13 +101,13 @@ describe('atomic game creation on real SQLite', () => {
     database.sqlite.prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run('legacy', '111', now + 60000, 0, now, now);
     expect((await create('legacy-access')).status).toBe(201);
-    expect(balance()).toEqual({ free_games_remaining: 2, paid_games: 0 });
+    expect(balance()).toEqual({ free_games_remaining: 1, paid_games: 0 });
   });
 
   it('does not debit twice even if an internal caller reuses the same UUID', async () => {
     const game = createNewGame({ id: 'fixed-id', ruleset: getRuleset('classic-v1')!, request: 'test', diceMode: 'physical' });
     expect((await createGameWithCharge(env.DB, game, '111', 'fixed-key')).created).toBe(true);
     expect((await createGameWithCharge(env.DB, game, '111', 'fixed-key')).created).toBe(false);
-    expect(balance()).toEqual({ free_games_remaining: 1, paid_games: 0 });
+    expect(balance()).toEqual({ free_games_remaining: 0, paid_games: 0 });
   });
 });

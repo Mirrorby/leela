@@ -7,9 +7,12 @@ import {
   getEntitlementsFromServer,
   startAiReviewOnServer,
   getAiReviewFromServer,
+  getGameFromServer,
+  getAccountFromServer,
   logClientAnalyticsEvent,
   WorkerApiError,
 } from './workerClient';
+import { makeGame } from '../testUtils/fixtures';
 import * as telegramAdapter from '../telegram/telegramAdapter';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -28,7 +31,7 @@ describe('workerClient', () => {
 
   it('createGameOnServer шлёт POST с телом {request, diceMode, clientRequestId} и заголовком Authorization: tma <initData>', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse({ game: { id: 'g1', request: 'test', diceMode: 'virtual' } }, 201)
+      jsonResponse({ game: makeGame({id: 'g1'}) }, 201)
     );
 
     const game = await createGameOnServer('test', 'virtual', 'client-req-1');
@@ -45,7 +48,7 @@ describe('workerClient', () => {
   it('rollOnServer НЕ включает value в тело, если он не передан (виртуальный режим)', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse({ game: { id: 'g1' }, events: [], value: 4 }));
+      .mockResolvedValue(jsonResponse({ game: makeGame({id: 'g1'}), events: [], value: 4 }));
 
     await rollOnServer('g1', 'evt-1');
 
@@ -58,7 +61,7 @@ describe('workerClient', () => {
   it('rollOnServer включает value, если он передан (физический режим)', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse({ game: { id: 'g1' }, events: [], value: 6 }));
+      .mockResolvedValue(jsonResponse({ game: makeGame({id: 'g1'}), events: [], value: 6 }));
 
     await rollOnServer('g1', 'evt-1', 6);
 
@@ -69,7 +72,7 @@ describe('workerClient', () => {
   it('rollOnServer включает diceMode в тело, если он передан (переключение режима во время партии)', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse({ game: { id: 'g1' }, events: [], value: 3 }));
+      .mockResolvedValue(jsonResponse({ game: makeGame({id: 'g1'}), events: [], value: 3 }));
 
     await rollOnServer('g1', 'evt-1', undefined, 'physical');
 
@@ -116,7 +119,7 @@ describe('workerClient', () => {
 
   it('listGamesOnServer возвращает games и nextCursor из ответа сервера', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse({ games: [{ id: 'g1' }], nextCursor: 'next-page-token' })
+      jsonResponse({ games: [makeGame({id: 'g1'})], nextCursor: 'next-page-token' })
     );
 
     const page = await listGamesOnServer();
@@ -145,6 +148,34 @@ describe('workerClient', () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(String(url)).toContain('/api/v1/games/game-1/analysis/start');
     expect(init?.method).toBe('POST');
+    expect(JSON.parse(init?.body as string)).toEqual({ kind: 'short' });
+  });
+
+  it('requests full analysis explicitly', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 'pending', kind: 'full' }));
+    await startAiReviewOnServer('g1', 'full');
+    expect(JSON.parse(spy.mock.calls[0][1]!.body as string)).toEqual({ kind: 'full' });
+  });
+  it('validates verified account identity', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ telegramId: '111' }));
+    expect(await getAccountFromServer()).toEqual({ telegramId: '111' });
+    spy.mockResolvedValue(jsonResponse({ telegramId: 111 }));
+    await expect(getAccountFromServer()).rejects.toMatchObject({ status: 502, body: { error: 'invalid_response' } });
+  });
+  it('rejects malformed game and mismatched ID instead of rendering unsafe server data', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ game: {} }));
+    await expect(getGameFromServer('g1')).rejects.toMatchObject({ status: 502 });
+    spy.mockResolvedValue(jsonResponse({ game: makeGame({ id: 'other' }) }));
+    await expect(getGameFromServer('g1')).rejects.toMatchObject({ status: 502 });
+  });
+  it('also bounds game requests with a timeout', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('timeout')), { once: true });
+    }));
+    const pending = getGameFromServer('g1').catch(e => e);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await pending).toMatchObject({ status: 0 });
   });
 
   it('getAiReviewFromServer GET на .../analysis', async () => {

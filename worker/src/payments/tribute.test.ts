@@ -98,7 +98,7 @@ describe('Tribute payments', () => {
   it('routes signed payment through the Worker and credits the existing entitlements', async () => {
     const res = await worker.fetch(await signedRequest(), { ...env, BOT_TOKEN: '', WEBHOOK_SECRET: '', GEMINI_API_KEY: '' } as Env, {} as ExecutionContext);
     expect(res.status).toBe(200);
-    expect(await getEntitlements(env.DB, '111')).toMatchObject({ freeGamesRemaining: 2, paidGames: 5, freeAiReviewsRemaining: 1 });
+    expect(await getEntitlements(env.DB, '111')).toMatchObject({ freeGamesRemaining: 1, paidGames: 5, freeAiReviewsRemaining: 1 });
     expect(sqlite.prepare('SELECT status, currency, amount FROM tribute_purchases').get()).toMatchObject({ status: 'successful', currency: 'RUB', amount: 49900 });
   });
 

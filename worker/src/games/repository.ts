@@ -1,5 +1,6 @@
 import type { GameState, GameStatus, DiceMode, Roll, Turn } from '../types/game';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from '../payments/catalog';
+import { ensureFreeGamePolicy } from '../payments/freeGamePolicy';
 import { InsufficientBalanceError, type GameChargeSource } from '../payments/repository';
 
 /**
@@ -138,6 +139,7 @@ export async function createGameWithCharge(
 ): Promise<{ game: GameState; created: boolean; source: GameChargeSource | null }> {
   const p = gameStateToRowParams(game, telegramId);
   const now = Date.now();
+  await ensureFreeGamePolicy(db);
   const activeSubscription = 'EXISTS (SELECT 1 FROM subscriptions WHERE telegram_id = ? AND period_end > ?)';
   const result = await db.batch([
     db.prepare(`INSERT INTO user_balances

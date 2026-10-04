@@ -77,12 +77,14 @@ export function GameHome({ session, nav }: ScreenProps) {
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+  const lifetime = useRef(0);
 
   useEffect(() => {
     return () => {
+      lifetime.current++;
       timers.current.forEach((t) => window.clearTimeout(t));
     };
-  }, []);
+  }, [game?.id]);
 
   if (!game) {
     return (
@@ -130,7 +132,8 @@ export function GameHome({ session, nav }: ScreenProps) {
   };
 
   const after = (ms: number, fn: () => void) => {
-    const id = window.setTimeout(fn, ms);
+    const token = lifetime.current;
+    const id = window.setTimeout(() => { if (lifetime.current === token) fn(); }, ms);
     timers.current.push(id);
   };
 
@@ -152,6 +155,7 @@ export function GameHome({ session, nav }: ScreenProps) {
    * подсказку, что и для отклонённых движком бросков.
    */
   const resolveRoll = async (value?: number) => {
+    const token = lifetime.current;
     hapticImpact('medium');
     let events: RollEvent[];
     let move: LastMove | null;
@@ -160,11 +164,13 @@ export function GameHome({ session, nav }: ScreenProps) {
     try {
       ({ events, move, game: updatedGame, value: rolledValue } = await session.roll(value));
     } catch {
+      if (lifetime.current !== token) return;
       setDiceStage('idle');
       showFlash(session.error ?? 'Не удалось отправить бросок — проверь соединение.');
       return;
     }
 
+    if (lifetime.current !== token) return;
     setFaceValue(rolledValue);
     setDiceStage('face');
 

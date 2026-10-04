@@ -7,30 +7,14 @@ import { useAiReview } from '../state/useAiReview';
 import { usePayments } from '../state/usePayments';
 import { formatProductPrice, ProductPurchaseButton, TributePaymentNotice } from '../components/ProductPurchase';
 
-/**
- * Итог партии (переоформлен — п.7 правок). Список ходов — MoveTile
- * (переиспользован из Истории, см. components/MoveTile.tsx).
- *
- * ИИ-разбор (батч 6 монетизации, §7/§11/§12 ТЗ) — раньше здесь была
- * заглушка ("Скоро — в разработке"). Реальный флоу:
- *   1. При открытии экрана тихо проверяем, нет ли уже готового/идущего
- *      разбора (getAiReviewFromServer) — партию могли уже анализировать
- *      раньше (повторный визит на Summary), не показываем оффер заново.
- *   2. 'none' → показываем предложение (§7), логируем ai_offer_shown —
- *      единственное чисто клиентское событие аналитики (§26), у сервера
- *      нет своего сигнала на "просто увидел кнопку".
- *   3. Клик → startAiReviewOnServer сам решает, списывать бесплатный или
- *      платный разбор (клиент этот выбор не делает) — 402 означает "нечем
- *      списывать", тогда показываем покупку через usePayments.
- *   4. useAiReview проверяет статус без параллельных запросов и ограничивает ожидание.
- */
 export function Summary({ session, nav }: ScreenProps) {
   const { game } = session;
   const payments = usePayments();
 
   const review = useAiReview(game?.id);
   const { state: aiState, content: aiContent, error: aiError } = review;
-  const handleGetReview = () => { void review.start(); };
+  const shortReview = () => { void review.start('short'); };
+  const fullReview = () => { void review.start('full'); };
   const offerShownLoggedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -62,34 +46,31 @@ export function Summary({ session, nav }: ScreenProps) {
       <div className="ai-review-section">
         {aiState === 'checking' && <p className="muted">Проверяем, есть ли уже разбор…</p>}
 
-        {aiState === 'none' && (
-          <button className="primary" onClick={handleGetReview}>
-            Получить ИИ-разбор
-          </button>
+        {review.shortContent && !(aiState === 'ready' && review.kind === 'full') && (
+          <><h2>Краткий разбор</h2><p className="ai-review-content">{review.shortContent}</p></>
         )}
+        {aiState === 'ready' && review.kind === 'full' && aiContent && (
+          <><h2>Полный разбор</h2><p className="ai-review-content">{aiContent}</p></>
+        )}
+        {(aiState === 'pending' || aiState === 'starting') && <p className="muted">{review.kind === 'short' ? 'Краткий' : 'Полный'} разбор генерируется…</p>}
+        {aiState === 'failed' && <p className="screen-error">{aiError ?? 'Не удалось создать разбор.'}</p>}
+        {aiState === 'locked' && <p className="muted">{review.kind === 'full' ? 'Для полного разбора нужен купленный кредит.' : 'Бесплатный краткий разбор уже использован.'}</p>}
 
-        {(aiState === 'pending' || aiState === 'starting') && <p className="muted">Разбор генерируется — обычно занимает несколько секунд…</p>}
-
-        {aiState === 'ready' && aiContent && <p className="ai-review-content">{aiContent}</p>}
-
-        {aiState === 'locked' && (
+        {!['checking', 'pending', 'starting'].includes(aiState) && !(aiState === 'ready' && review.kind === 'full') && (
           <>
-            <p className="muted">{payments.entitlements?.canStartAiReview ? 'Разбор доступен на вашем балансе.' : 'Бесплатный и купленные разборы закончились.'}</p>
-            {payments.entitlements?.canStartAiReview ? (
-              <button className="primary" onClick={handleGetReview}>Получить ИИ-разбор</button>
+            {!review.shortContent && (payments.entitlements?.freeAiReviewsRemaining ?? 0) > 0 && (
+              <button className="primary" onClick={shortReview}>Получить краткий разбор бесплатно</button>
+            )}
+            <p className="muted">Полный разбор подробно связывает путь партии с вашим запросом. Он оплачивается отдельно.</p>
+            {(payments.entitlements?.paidAiReviews ?? 0) > 0 ? (
+              <button className="primary" onClick={fullReview}>Получить полный разбор · 1 купленный кредит</button>
             ) : reviewProduct ? (
-              <ProductPurchaseButton product={reviewProduct} label={`Купить разбор — ${formatProductPrice(reviewProduct)}`} />
+              <ProductPurchaseButton product={reviewProduct} label={`Купить полный разбор — ${formatProductPrice(reviewProduct)}`} />
             ) : <button onClick={() => { void payments.refresh(); }} disabled={payments.loading}>
               {payments.loading ? 'Загружаем цену…' : 'Загрузить варианты оплаты'}
             </button>}
             {reviewProduct?.tribute && <TributePaymentNotice loading={payments.loading} onRefresh={() => { void payments.refresh(); }} />}
-          </>
-        )}
-
-        {aiState === 'failed' && (
-          <>
-            <p className="screen-error">{aiError ?? 'Не удалось сгенерировать разбор.'}</p>
-            <button onClick={handleGetReview}>Попробовать ещё раз</button>
+            {aiState === 'failed' && <button onClick={() => { void review.start(review.kind); }}>Повторить запрос разбора</button>}
           </>
         )}
 

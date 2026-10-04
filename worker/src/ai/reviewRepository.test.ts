@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { publicAiReview } from './reviewFormat';
 import { createSqliteD1 } from '../testUtils/sqliteD1';
 import { getOrCreateUserBalance, InsufficientBalanceError } from '../payments/repository';
 import {
@@ -99,7 +100,7 @@ describe('AI reservation and settlement on real SQLite', () => {
     expect(await failAiReviewAndRefund(database.db, 'g1', first.review.updated_at)).toBe(false);
     expect((await balance()).free_ai_reviews_remaining).toBe(0);
     expect(await markAiReviewReady(database.db, 'g1', second.review.updated_at, 'new')).toBe(true);
-    expect((await getAiReview(database.db, 'g1'))?.content).toBe('new');
+    expect(publicAiReview((await getAiReview(database.db, 'g1'))!).content).toBe('new');
   });
 
   it('attempt tokens stay distinct when the clock moves backwards', async () => {

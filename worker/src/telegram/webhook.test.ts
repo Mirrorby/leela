@@ -1,7 +1,7 @@
 import { createPendingTransaction } from '../testUtils/legacyTransaction';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleTelegramWebhook, verifyWebhookSecret } from './webhook';
-import { createFakeD1 } from '../testUtils/fakeD1';
+import { createSqliteD1 } from '../testUtils/sqliteD1';
 import { getTransactionById, getOrCreateUserBalance, getLatestSubscription } from '../payments/repository';
 import { listAnalyticsEvents } from '../analytics/repository';
 
@@ -19,6 +19,10 @@ function req(body: unknown, secretHeader?: string): Request {
     body: JSON.stringify(body),
   });
 }
+
+const databases: ReturnType<typeof createSqliteD1>[] = [];
+function createTestD1(): D1Database { const database = createSqliteD1(); databases.push(database); return database.db; }
+afterEach(() => { databases.splice(0).forEach(({ sqlite }) => sqlite.close()); });
 
 describe('verifyWebhookSecret', () => {
   it('принимает совпадающий секрет', () => {
@@ -48,7 +52,7 @@ describe('handleTelegramWebhook', () => {
 
   it('отвечает 401 при неверном секрете и НЕ шлёт сообщение в Telegram', async () => {
     const request = req({ update_id: 1, message: { message_id: 1, chat: { id: 42 }, text: '/start' } }, 'wrong');
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createFakeD1());
+    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
     expect(res.status).toBe(401);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -58,7 +62,7 @@ describe('handleTelegramWebhook', () => {
       { update_id: 1, message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text: '/start' } },
       WEBHOOK_SECRET
     );
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createFakeD1());
+    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
     expect(res.status).toBe(200);
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
@@ -74,14 +78,14 @@ describe('handleTelegramWebhook', () => {
       { update_id: 2, message: { message_id: 2, chat: { id: 42 }, text: 'привет' } },
       WEBHOOK_SECRET
     );
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createFakeD1());
+    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
     expect(res.status).toBe(200);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('на апдейт без message (например, edited_message) отвечает 200 и не падает', async () => {
     const request = req({ update_id: 3 }, WEBHOOK_SECRET);
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createFakeD1());
+    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
     expect(res.status).toBe(200);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -92,7 +96,7 @@ describe('handleTelegramWebhook', () => {
       headers: { 'X-Telegram-Bot-Api-Secret-Token': WEBHOOK_SECRET, 'Content-Type': 'application/json' },
       body: 'not-json{{{',
     });
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createFakeD1());
+    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
     expect(res.status).toBe(400);
   });
 
@@ -102,7 +106,7 @@ describe('handleTelegramWebhook', () => {
       { update_id: 4, message: { message_id: 4, chat: { id: 42 }, text: '/start' } },
       WEBHOOK_SECRET
     );
-    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createFakeD1());
+    const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
     expect(res.status).toBe(200);
   });
 });
@@ -111,7 +115,7 @@ describe('retired Stars checkout', () => {
   afterEach(() => vi.restoreAllMocks());
   it('rejects even a valid historical invoice without changing its transaction', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    const db = createFakeD1();
+    const db = createTestD1();
     const tx = await createPendingTransaction(db, '555', 'game_1');
     const response = await handleTelegramWebhook(req({ update_id: 10, pre_checkout_query: {
       id: 'old-invoice', from: { id: 555 }, currency: 'XTR', total_amount: tx.stars_amount, invoice_payload: tx.id,
@@ -124,7 +128,7 @@ describe('retired Stars checkout', () => {
 
 describe('handleTelegramWebhook — successful_payment (батч 3)', () => {
   it('обычная покупка партий — начисляет paid_games и помечает транзакцию successful', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const tx = await createPendingTransaction(db, '600', 'game_5');
 
     const request = req(
@@ -156,7 +160,7 @@ describe('handleTelegramWebhook — successful_payment (батч 3)', () => {
   });
 
   it('повторная доставка того же charge_id — НЕ начисляет второй раз (идемпотентность, §14 ТЗ)', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const tx = await createPendingTransaction(db, '601', 'game_5');
     const payment = {
       currency: 'XTR',
@@ -178,7 +182,7 @@ describe('handleTelegramWebhook — successful_payment (батч 3)', () => {
   });
 
   it('первая оплата подписки — создаёт subscriptions с period_end = subscription_expiration_date * 1000', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const tx = await createPendingTransaction(db, '602', 'subscription_unlimited');
     const expirationSeconds = Math.floor(Date.now() / 1000) + 2592000;
 
@@ -214,7 +218,7 @@ describe('handleTelegramWebhook — successful_payment (батч 3)', () => {
   });
 
   it('продление подписки (is_recurring, не is_first_recurring) — обновляет period_end существующей подписки, не создаёт новую и не начисляет партии', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const now = Date.now();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -251,7 +255,7 @@ describe('handleTelegramWebhook — successful_payment (батч 3)', () => {
   });
 
   it('транзакция не найдена по invoice_payload — вебхук отвечает НЕ 200 (Telegram должен повторить доставку, деньги уже получены)', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const request = req(
       {
         update_id: 24,
@@ -275,7 +279,7 @@ describe('handleTelegramWebhook — successful_payment (батч 3)', () => {
 
 describe('handleTelegramWebhook — subscription update (батч 3, защищённая обработка)', () => {
   it('state: "canceled" выключает auto_renew, но НЕ трогает period_end (§17 ТЗ — доступ остаётся до конца периода)', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const now = Date.now();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -292,7 +296,7 @@ describe('handleTelegramWebhook — subscription update (батч 3, защищ�
   });
 
   it('неизвестное состояние подписки — игнорируется, не роняет вебхук', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const request = req({ update_id: 31, subscription: { user: { id: 701 }, state: 'some_future_state' } }, WEBHOOK_SECRET);
     const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, db);
     expect(res.status).toBe(200);
@@ -301,7 +305,7 @@ describe('handleTelegramWebhook — subscription update (батч 3, защищ�
 
 describe('handleTelegramWebhook — аналитика §26 (батч 5)', () => {
   it('обычная покупка (game_5) — логирует payment_success с productId/starsAmount', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const tx = await createPendingTransaction(db, '800', 'game_5');
     const request = req(
       {
@@ -322,7 +326,7 @@ describe('handleTelegramWebhook — аналитика §26 (батч 5)', () =>
   });
 
   it('покупка ai_review_1 — логирует ai_payment_success, не общий payment_success', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const tx = await createPendingTransaction(db, '801', 'ai_review_1');
     const request = req(
       {
@@ -342,7 +346,7 @@ describe('handleTelegramWebhook — аналитика §26 (батч 5)', () =>
   });
 
   it('первая оплата подписки — логирует subscription_started', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const tx = await createPendingTransaction(db, '802', 'subscription_unlimited');
     const request = req(
       {
@@ -370,7 +374,7 @@ describe('handleTelegramWebhook — аналитика §26 (батч 5)', () =>
   });
 
   it('продление подписки — логирует subscription_renewed, не subscription_started', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const now = Date.now();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -403,7 +407,7 @@ describe('handleTelegramWebhook — аналитика §26 (батч 5)', () =>
   });
 
   it('отключённый Stars checkout не входит в воронку новых покупок', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const tx = await createPendingTransaction(db, '804', 'game_1');
     const request = req(
@@ -416,7 +420,7 @@ describe('handleTelegramWebhook — аналитика §26 (батч 5)', () =>
   });
 
   it('state: "canceled" — логирует subscription_cancelled', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const now = Date.now();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')

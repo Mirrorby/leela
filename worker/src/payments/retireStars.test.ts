@@ -27,7 +27,7 @@ describe('historical Stars renewal retirement', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain('/editUserStarSubscription');
     expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ user_id: 111, telegram_payment_charge_id: 'original-charge', is_canceled: true });
     expect(subscription()).toMatchObject({ auto_renew: 0, period_end: before!.period_end });
-    expect(await getOrCreateUserBalance(database.db, '111')).toMatchObject({ free_games_remaining: 2, paid_games: 0 });
+    expect(await getOrCreateUserBalance(database.db, '111')).toMatchObject({ free_games_remaining: 1, paid_games: 0 });
     await retireStarsRenewals(database.db, 'test-token');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

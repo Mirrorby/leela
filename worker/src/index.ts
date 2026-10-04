@@ -8,6 +8,7 @@ import { getEntitlements, trackSubscriptionExpiryIfNeeded, InsufficientBalanceEr
 import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './payments/tribute';
 import { retireStarsRenewals } from './payments/retireStars';
 import { getRecoverableAiReview, reserveAiReview, markAiReviewReady, failAiReviewAndRefund, recoverExpiredAiReviews } from './ai/reviewRepository';
+import { publicAiReview, type ReviewKind } from './ai/reviewFormat';
 import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
 import { logAnalyticsEvent } from './analytics/repository';
@@ -206,10 +207,10 @@ async function logAiEvent(env: Env, telegramId: string, event: 'free_ai_used' | 
 /** Fast background work is bounded below waitUntil's 30-second lifetime.
  * Persistent reservations are recovered on read/start and by cron if the
  * isolate is terminated. Only this attempt may settle or refund its credit. */
-async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, attempt: number): Promise<void> {
+async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, attempt: number, kind: ReviewKind): Promise<void> {
   let saved: boolean;
   try {
-    const text = await generateReview(env.GEMINI_API_KEY, buildReviewPrompt(game));
+    const text = await generateReview(env.GEMINI_API_KEY, buildReviewPrompt(game, kind), kind);
     saved = await markAiReviewReady(env.DB, game.id, attempt, text);
   } catch {
     await failAiReviewAndRefund(env.DB, game.id, attempt);
@@ -223,7 +224,7 @@ async function generateAndStoreReview(env: Env, game: GameState, telegramId: str
   }
 }
 
-async function handleStartAiReview(env: Env, ctx: ExecutionContext, auth: ValidatedInitData, gameId: string): Promise<Response> {
+async function handleStartAiReview(request: Request, env: Env, ctx: ExecutionContext, auth: ValidatedInitData, gameId: string): Promise<Response> {
   const found = await getGameById(env.DB, gameId, auth.telegramId);
   if (!found) return json({ error: 'not_found' }, { status: 404 });
   const game = found.game;
@@ -231,35 +232,43 @@ async function handleStartAiReview(env: Env, ctx: ExecutionContext, auth: Valida
     return json({ error: 'invalid_state', detail: 'ИИ-разбор доступен только для завершённой партии.' }, { status: 400 });
   }
 
+  let kind: ReviewKind = 'short';
+  const raw = await request.text();
+  if (raw) {
+    let body;
+    try { body = JSON.parse(raw); } catch { return json({ error: 'invalid_body' }, { status: 400 }); }
+    if (body?.kind !== 'short' && body?.kind !== 'full') return json({ error: 'invalid_review_kind' }, { status: 400 });
+    kind = body.kind;
+  }
   await getRecoverableAiReview(env.DB, gameId);
   let reservation;
   try {
-    reservation = await reserveAiReview(env.DB, gameId, auth.telegramId);
+    reservation = await reserveAiReview(env.DB, gameId, auth.telegramId, kind);
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
       return json({
         error: 'analysis_locked',
-        detail: 'Бесплатный и купленные ИИ-разборы закончились.',
+        detail: kind === 'full' ? 'Для полного разбора нужен купленный кредит.' : 'Бесплатный краткий разбор уже использован.',
         products: listProductsWithTribute(env).filter((p) => p.grant.aiReviews > 0),
       }, { status: 402 });
     }
     throw err;
   }
-  const { review, started } = reservation;
+  const { review, started, view } = reservation;
   if (!started) {
-    if (review.status === 'ready') return json({ status: 'ready', content: review.content });
-    return json({ status: 'pending', error: 'already_generating' }, { status: 409 });
+    if (view.status === 'ready') return json(view);
+    return json({ ...view, error: 'already_generating' }, { status: 409 });
   }
 
   // Schedule first: an analytics failure must not strand a reservation.
-  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, review.updated_at).catch(() => {
+  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, review.updated_at, kind).catch(() => {
     console.warn('AI attempt settlement failed; reservation remains recoverable');
   }));
   ctx.waitUntil((async () => {
     if (review.charged_from === 'free') await logAiEvent(env, auth.telegramId, 'free_ai_used', gameId);
     await logAiEvent(env, auth.telegramId, 'ai_review_started', gameId);
   })());
-  return json({ status: 'pending' }, { status: 202 });
+  return json(view, { status: 202 });
 }
 
 async function handleGetAiReview(env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
@@ -267,7 +276,7 @@ async function handleGetAiReview(env: Env, auth: ValidatedInitData, gameId: stri
   if (!found) return json({ error: 'not_found' }, { status: 404 });
   const review = await getRecoverableAiReview(env.DB, gameId);
   if (!review) return json({ status: 'none' });
-  return json({ status: review.status, content: review.content, error: review.error });
+  return json(publicAiReview(review));
 }
 
 async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, gameId: string): Promise<Response> {
@@ -386,6 +395,13 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/v1/me') {
+      const auth = await requireAuth(request, env);
+      if (!isValidatedInitData(auth)) return auth;
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
+      return json({ telegramId: auth.telegramId });
+    }
+
     if (url.pathname.startsWith('/api/v1/games')) {
       const auth = await requireAuth(request, env);
       if (!isValidatedInitData(auth)) return auth;
@@ -414,7 +430,7 @@ export default {
       // /api/v1/games/:id/analysis/start
       const analysisStartMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/analysis\/start$/);
       if (analysisStartMatch) {
-        if (request.method === 'POST') return handleStartAiReview(env, ctx, auth, analysisStartMatch[1]);
+        if (request.method === 'POST') return handleStartAiReview(request, env, ctx, auth, analysisStartMatch[1]);
         return json({ error: 'method_not_allowed' }, { status: 405 });
       }
 

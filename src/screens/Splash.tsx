@@ -1,9 +1,7 @@
 import type { ScreenProps } from '../navigation/ScreenProps';
-import { listPersistedGames } from '../state/persistence';
 import { getDisplayUser } from '../telegram/telegramAdapter';
 
 export function Splash({ nav }: ScreenProps) {
-  const hasSavedGames = listPersistedGames().length > 0;
   // Только для отображения (initDataUnsafe не проверен) — просто вежливое
   // приветствие по имени, если открыто внутри Telegram. Никаких решений о
   // доступе на этом не строится.
@@ -16,7 +14,8 @@ export function Splash({ nav }: ScreenProps) {
       <button className="primary" onClick={() => nav.push('Intro')}>
         Новая партия
       </button>
-      {hasSavedGames && <button onClick={() => nav.push('MyGames')}>Мои партии</button>}
+      <button onClick={() => nav.push('MyGames')}>Мои партии</button>
+      <button onClick={() => nav.push('YourAccess')}>Ваш доступ</button>
     </div>
   );
 }

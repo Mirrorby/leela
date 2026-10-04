@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  setStorageOwner,
   deleteGame,
   getActiveGameId,
   listGames,
@@ -54,12 +55,14 @@ function createThrowingLocalStorage() {
 let mockStorage: ReturnType<typeof createMockLocalStorage>;
 
 beforeEach(() => {
+  setStorageOwner('111');
   mockStorage = createMockLocalStorage();
   // @ts-expect-error — тестовый глобальный window, окружение vitest здесь 'node'
   globalThis.window = { localStorage: mockStorage };
 });
 
 afterEach(() => {
+  setStorageOwner(null);
   // @ts-expect-error — убираем тестовый window между тестами
   delete globalThis.window;
 });
@@ -121,23 +124,23 @@ describe('localStorage layer — нормальный путь', () => {
 
 describe('localStorage layer — устойчивость к повреждённым данным', () => {
   it('возвращает null при повреждённом JSON одной записи', () => {
-    mockStorage.setItem('leela:v1:game:broken', '{not json');
+    mockStorage.setItem('leela:v2:user:111:game:broken', '{not json');
     expect(loadGame('broken')).toBeNull();
   });
 
   it('пропускает повреждённые записи при listGames и вычищает их из индекса', () => {
     saveGame<TestRecord>({ id: 'a', value: 1 });
-    mockStorage._raw.set('leela:v1:game:ghost', '{not json');
-    mockStorage._raw.set('leela:v1:index', JSON.stringify(['a', 'ghost']));
+    mockStorage._raw.set('leela:v2:user:111:game:ghost', '{not json');
+    mockStorage._raw.set('leela:v2:user:111:index', JSON.stringify(['a', 'ghost']));
 
     expect(listGames<TestRecord>().map((r) => r.id)).toEqual(['a']);
 
-    const rawIndex = JSON.parse(mockStorage.getItem('leela:v1:index')!);
+    const rawIndex = JSON.parse(mockStorage.getItem('leela:v2:user:111:index')!);
     expect(rawIndex).toEqual(['a']);
   });
 
   it('не падает, если индекс сам повреждён', () => {
-    mockStorage._raw.set('leela:v1:index', 'не json вообще');
+    mockStorage._raw.set('leela:v2:user:111:index', 'не json вообще');
     expect(listGames()).toEqual([]);
   });
 });

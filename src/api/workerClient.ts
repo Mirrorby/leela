@@ -1,4 +1,5 @@
 import type { DiceMode, GameState, RollEvent } from '../types/game';
+import { isGameState, isRollEvents } from '../game/validateGameState';
 import type { Product, Entitlements } from '../types/payments';
 import { getInitData } from '../telegram/telegramAdapter';
 
@@ -26,7 +27,7 @@ interface ErrorBody {
   detail?: string;
 }
 
-async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 0): Promise<T> {
+async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 15_000): Promise<T> {
   const initData = getInitData();
   const controller = timeoutMs ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
@@ -78,7 +79,7 @@ export async function createGameOnServer(request: string, diceMode: DiceMode, cl
     method: 'POST',
     body: JSON.stringify({ request, diceMode, clientRequestId }),
   });
-  return result.game;
+  return checkedGame(result?.game);
 }
 
 export interface GamesPage {
@@ -99,12 +100,31 @@ export async function listGamesOnServer(options: { cursor?: string | null; limit
   if (options.cursor) params.set('cursor', options.cursor);
   if (options.limit) params.set('limit', String(options.limit));
   const query = params.toString();
-  return apiFetch<GamesPage>(`/api/v1/games${query ? `?${query}` : ''}`);
+  const page = await apiFetch<GamesPage>(`/api/v1/games${query ? `?${query}` : ''}`);
+  if (!page || !Array.isArray(page.games) || !(page.nextCursor === null || typeof page.nextCursor === 'string')) {
+    throw new WorkerApiError('Сервер вернул некорректную историю. Попробуйте обновить список.', 502, { error: 'invalid_response' });
+  }
+  return { games: page.games.map((game) => checkedGame(game)), nextCursor: page.nextCursor };
 }
 
 export async function getGameFromServer(gameId: string): Promise<GameState> {
   const result = await apiFetch<{ game: GameState }>(`/api/v1/games/${gameId}`);
-  return result.game;
+  return checkedGame(result?.game, gameId);
+}
+
+function checkedGame(value: unknown, expectedId?: string): GameState {
+  if (!isGameState(value) || (expectedId && value.id !== expectedId)) {
+    throw new WorkerApiError('Не удалось прочитать партию. Попробуйте загрузить её снова.', 502, { error: 'invalid_response' });
+  }
+  return value;
+}
+
+export async function getAccountFromServer(): Promise<{ telegramId: string }> {
+  const result = await apiFetch<{ telegramId: string }>('/api/v1/me');
+  if (!result || typeof result.telegramId !== 'string' || !/^[1-9]\d*$/.test(result.telegramId)) {
+    throw new WorkerApiError('Не удалось подтвердить Telegram-аккаунт.', 502, { error: 'invalid_response' });
+  }
+  return result;
 }
 
 export interface RollResult {
@@ -134,10 +154,14 @@ export async function rollOnServer(
   const body: { clientEventId: string; value?: number; diceMode?: DiceMode } = { clientEventId };
   if (value !== undefined) body.value = value;
   if (diceMode !== undefined) body.diceMode = diceMode;
-  return apiFetch<RollResult>(`/api/v1/games/${gameId}/rolls`, {
+  const result = await apiFetch<RollResult>(`/api/v1/games/${gameId}/rolls`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
+  if (!result || !isRollEvents(result.events) || !Number.isInteger(result.value) || result.value < 1 || result.value > 6) {
+    throw new WorkerApiError('Не удалось прочитать результат броска. Повторите запрос.', 502, { error: 'invalid_response' });
+  }
+  return { ...result, game: checkedGame(result.game, gameId) };
 }
 
 // ----------------------------------------------------------------------
@@ -154,7 +178,10 @@ export async function getEntitlementsFromServer(): Promise<Entitlements> {
 }
 
 
+export type ReviewKind = 'short' | 'full';
 export interface AiReviewStatus {
+  kind?: ReviewKind;
+  shortContent?: string | null;
   status: 'none' | 'pending' | 'ready' | 'failed';
   content?: string | null;
   error?: string | null;
@@ -163,8 +190,8 @@ export interface AiReviewStatus {
 /** 202 (pending, только что запущена) или 200 (уже была готова — повторный
  * просмотр, бесплатно, см. §11 ТЗ) — apiFetch не различает эти статусы
  * отдельно, тело ответа в обоих случаях содержит актуальный AiReviewStatus. */
-export async function startAiReviewOnServer(gameId: string): Promise<AiReviewStatus> {
-  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST' }, 15_000);
+export async function startAiReviewOnServer(gameId: string, kind: ReviewKind = 'short'): Promise<AiReviewStatus> {
+  return apiFetch<AiReviewStatus>(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', body: JSON.stringify({ kind }) }, 15_000);
 }
 
 export async function getAiReviewFromServer(gameId: string): Promise<AiReviewStatus> {

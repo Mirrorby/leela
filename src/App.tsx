@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useGameSession } from './state/useGameSession';
 import {
-  getActivePersistedGameId,
-  loadPersistedGame,
   persistGame,
   setActivePersistedGameId,
 } from './state/persistence';
 import { resolveGameScreen, normalizeScreenName } from './state/resolveGameScreen';
+import { recoverSession } from './state/recoverSession';
+import { WorkerApiError } from './api/workerClient';
 import type { NavigationActions, ScreenEntry, ScreenName } from './navigation/types';
 import { screens } from './screens';
 import { captureInitData, initTelegramApp } from './telegram/telegramAdapter';
@@ -28,6 +28,8 @@ function App() {
   const session = useGameSession();
   const [stack, setStack] = useState<ScreenEntry[]>([{ name: 'Splash' }]);
   const [hydrated, setHydrated] = useState(false);
+  const [recoveryAttempt, setRecoveryAttempt] = useState(0);
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
 
   // Этап 6: Telegram Web App SDK. Вне Telegram все три хука — no-op, а
   // initTelegramApp()/captureInitData() просто не находят window.Telegram.
@@ -38,35 +40,34 @@ function App() {
   useTelegramTheme();
   useTelegramViewport();
 
-  // Восстановление активной партии. Выполняется один раз при монтировании —
-  // до этого момента ничего не рендерим, чтобы не мигнуть Splash перед
-  // переходом на восстановленный экран.
+  // Never render a private snapshot until this launch's account is verified.
   useEffect(() => {
-    const activeId = getActivePersistedGameId();
-    if (activeId) {
-      const record = loadPersistedGame(activeId);
-      if (record) {
-        session.restore(record);
-        // resolveGameScreen — самолечение записей, испорченных найденным
-        // багом "Продолжить заводит новую партию" (см. комментарий в
-        // state/resolveGameScreen.ts): если экран сохранён предыгровым, а у
-        // партии уже есть реальный прогресс, открываем сразу GameHome.
-        setStack([{ name: resolveGameScreen(normalizeScreenName(record.screen), record.game) }]);
-        // Фоновый ресинк с сервером (см. useGameSession.syncFromServer,
-        // ревью п.6) — локальный снимок мог устареть, если партия успела
-        // измениться на другом устройстве/вкладке между закрытием этой
-        // сессии и сейчас. Не блокирует рендер и не мешает офлайн-режиму.
-        void session.syncFromServer(record.id);
-      } else {
-        // activeGameId ссылается на запись, которой больше нет (удалена
-        // вручную или JSON повреждён) — просто забываем про неё.
-        setActivePersistedGameId(null);
-      }
-    }
-    setHydrated(true);
-    // Намеренно один раз при монтировании — session.restore стабилен (useCallback).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let current = true;
+    setHydrated(false);
+    setRecoveryNotice(null);
+    recoverSession(() => current)
+      .then((result) => {
+        if (!current || !result) return;
+        if (result.record) {
+          session.restore(result.record);
+          setStack([{ name: resolveGameScreen(normalizeScreenName(result.record.screen), result.record.game) }]);
+        } else {
+          session.reset();
+          setStack([{ name: 'Splash' }]);
+        }
+        setRecoveryNotice(result.notice);
+      })
+      .catch((error) => {
+        if (!current) return;
+        session.reset();
+        setStack([{ name: 'Splash' }]);
+        setRecoveryNotice(error instanceof WorkerApiError && [401, 403].includes(error.status)
+          ? 'Откройте игру через Telegram, чтобы получить доступ к своим партиям.'
+          : 'Не удалось подключиться к серверу. Повторите подключение, чтобы открыть сохранённые партии.');
+      })
+      .finally(() => { if (current) setHydrated(true); });
+    return () => { current = false; };
+  }, [recoveryAttempt, session.restore, session.reset]);
 
   const push = useCallback((name: ScreenName, params?: Record<string, unknown>) => {
     setStack((prev) => [...prev, { name, params }]);
@@ -118,13 +119,17 @@ function App() {
   }, [hydrated, session.game, session.lastEvents, session.lastRollValue, session.lastMove, current.name]);
 
   if (!hydrated) {
-    return <div className="app-shell" />;
+    return <div className="app-shell"><p className="muted">Подключаемся к игре…</p></div>;
   }
 
   const CurrentScreen = screens[current.name];
 
   return (
     <div className="app-shell">
+      {recoveryNotice && <div role="status" className="screen-notice">
+        <p>{recoveryNotice}</p>
+        <button onClick={() => setRecoveryAttempt((attempt) => attempt + 1)}>Повторить подключение</button>
+      </div>}
       <CurrentScreen session={session} nav={nav} params={current.params} />
     </div>
   );

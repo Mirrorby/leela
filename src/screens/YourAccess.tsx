@@ -32,8 +32,10 @@ export function YourAccess({ nav }: ScreenProps) {
             <strong>{payments.entitlements.paidGames}</strong> купленных
           </p>
           <p>
-            ИИ-разборы: <strong>{payments.entitlements.freeAiReviewsRemaining}</strong> бесплатных,{' '}
-            <strong>{payments.entitlements.paidAiReviews}</strong> купленных
+            Краткий ИИ-разбор: <strong>{payments.entitlements.freeAiReviewsRemaining}</strong> бесплатно
+          </p>
+          <p>
+            Полные ИИ-разборы: <strong>{payments.entitlements.paidAiReviews}</strong> купленных
           </p>
           {subscription?.active && <p>Ранее оплаченный доступ: {subscriptionLine}</p>}
         </div>

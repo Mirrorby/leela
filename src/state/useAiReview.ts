@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { getAiReviewFromServer, startAiReviewOnServer } from '../api/workerClient';
+import { type ReviewKind, getAiReviewFromServer, startAiReviewOnServer } from '../api/workerClient';
 import { createAiReviewController, type AiReviewSnapshot } from './aiReviewController';
 
-const INITIAL: AiReviewSnapshot = { state: 'checking', content: null, error: null };
+const INITIAL: AiReviewSnapshot = { state: 'checking', content: null, error: null, kind: 'short', shortContent: null };
 
 export function useAiReview(gameId: string | undefined) {
   const controllerRef = useRef<ReturnType<typeof createAiReviewController> | null>(null);
@@ -12,7 +12,7 @@ export function useAiReview(gameId: string | undefined) {
     if (!gameId) return;
     const controller = createAiReviewController({
       get: () => getAiReviewFromServer(gameId),
-      start: () => startAiReviewOnServer(gameId),
+      start: (kind) => startAiReviewOnServer(gameId, kind),
     }, (next) => setSnapshot({ gameId, ...next }));
     controllerRef.current = controller;
     void controller.check();
@@ -24,6 +24,6 @@ export function useAiReview(gameId: string | undefined) {
 
   return {
     ...(snapshot.gameId === gameId ? snapshot : INITIAL),
-    start: () => controllerRef.current?.start(),
+    start: (kind: ReviewKind) => controllerRef.current?.start(kind),
   };
 }

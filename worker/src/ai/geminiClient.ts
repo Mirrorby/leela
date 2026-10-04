@@ -1,3 +1,4 @@
+import type { ReviewKind } from './reviewFormat';
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 export const GEMINI_TIMEOUT_MS = 20_000;
@@ -19,7 +20,7 @@ interface GeminiResponse {
  * x-goog-api-key — актуальный формат передачи ключа (а не ?key= в URL) по
  * официальной документации Gemini API на момент разработки.
  */
-export async function generateReview(apiKey: string, prompt: string): Promise<string> {
+export async function generateReview(apiKey: string, prompt: string, kind: ReviewKind = 'full'): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
@@ -32,6 +33,7 @@ export async function generateReview(apiKey: string, prompt: string): Promise<st
       },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
+        ...(kind === 'short' ? { generationConfig: { maxOutputTokens: 768, thinkingConfig: { thinkingBudget: 0 } } } : {}),
       }),
     });
 
@@ -45,6 +47,8 @@ export async function generateReview(apiKey: string, prompt: string): Promise<st
       throw new Error(`Gemini заблокировал запрос: ${data.promptFeedback.blockReason}`);
     }
 
+    const reason = data.candidates?.[0]?.finishReason;
+    if (reason && reason !== 'STOP') throw new Error(`Gemini не завершил разбор: ${reason}`);
     const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
     if (!text.trim()) {
       throw new Error('Gemini вернул пустой ответ');

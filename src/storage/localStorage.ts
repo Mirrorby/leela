@@ -1,204 +1,118 @@
-// Чистый слой хранения. Ничего не знает про Game Engine или React — только
-// читает/пишет JSON в localStorage с обработкой ошибок. Формы хранимых
-// объектов задаёт вызывающий код через generic-параметр T.
-//
-// Схема ключей:
-//   leela:v1:game:<id>   — JSON-запись одной партии (форму задаёт вызывающий код)
-//   leela:v1:index       — JSON-массив id всех сохранённых партий
-//   leela:v1:activeGameId — id партии, которую нужно восстановить при загрузке
-//   leela:v1:onboardingSeen — '1', если обучающий онбординг (HowToPlay) уже
-//                             показывался этому пользователю хотя бы раз
+// Private cache keys are accessible only after /api/v1/me verified the
+// current Telegram account. Old shared game snapshots are never displayed.
+let storageOwner: string | null = null;
 
-const STORAGE_PREFIX = 'leela:v1:';
-const INDEX_KEY = `${STORAGE_PREFIX}index`;
-const ACTIVE_GAME_KEY = `${STORAGE_PREFIX}activeGameId`;
-const ONBOARDING_SEEN_KEY = `${STORAGE_PREFIX}onboardingSeen`;
-
-function gameKey(id: string): string {
-  return `${STORAGE_PREFIX}game:${id}`;
+export function setStorageOwner(owner: string | null): void {
+  if (owner !== null && !/^[1-9]\d*$/.test(owner)) throw new Error('Invalid verified storage owner');
+  storageOwner = owner;
 }
+export function getStorageOwner(): string | null { return storageOwner; }
 
-/**
- * Проверка доступности localStorage без побочных эффектов "на глазок":
- * приватный режим Safari, отключённый storage в настройках браузера,
- * встраивание в iframe с ограничениями — во всех случаях просто false.
- */
-function isStorageAvailable(): boolean {
+function prefix(): string | null {
+  return storageOwner ? `leela:v2:user:${storageOwner}:` : null;
+}
+function storage(): Storage | null {
+  try { return typeof window === 'undefined' ? null : window.localStorage; } catch { return null; }
+}
+function read(key: string): string | null {
+  try { return storage()?.getItem(key) ?? null; } catch { return null; }
+}
+function write(key: string, value: string | null): boolean {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) return false;
-    const testKey = `${STORAGE_PREFIX}__probe__`;
-    window.localStorage.setItem(testKey, '1');
-    window.localStorage.removeItem(testKey);
+    const target = storage();
+    if (!target) return false;
+    if (value === null) target.removeItem(key); else target.setItem(key, value);
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
-
-function readIndex(): string[] {
-  if (!isStorageAvailable()) return [];
+function privateKey(name: string): string | null {
+  const scope = prefix();
+  return scope ? scope + name : null;
+}
+function readIds(name: string): string[] {
+  const key = privateKey(name);
+  if (!key) return [];
   try {
-    const raw = window.localStorage.getItem(INDEX_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === 'string');
-  } catch {
-    // Повреждённый индекс — считаем, что сохранённых партий нет, а не падаем.
-    return [];
-  }
+    const parsed: unknown = JSON.parse(read(key) ?? '[]');
+    return Array.isArray(parsed) ? [...new Set(parsed.filter((id): id is string => typeof id === 'string' && id.length > 0))] : [];
+  } catch { return []; }
+}
+function writeIds(name: string, ids: string[]): boolean {
+  const key = privateKey(name);
+  return key ? write(key, JSON.stringify(ids)) : false;
 }
 
-function writeIndex(ids: string[]): void {
-  if (!isStorageAvailable()) return;
-  try {
-    window.localStorage.setItem(INDEX_KEY, JSON.stringify(ids));
-  } catch {
-    // Квота переполнена и на индекс — партия(и) при этом уже могли не
-    // сохраниться, дальше просто продолжаем работать в памяти.
-  }
-}
-
-/** Сохраняет запись по её id, регистрируя id в индексе. Возвращает false при любой ошибке (квота, приватный режим и т.п.) — вызывающий код решает, что делать дальше. */
 export function saveGame<T extends { id: string }>(record: T): boolean {
-  if (!isStorageAvailable()) return false;
+  const key = privateKey('game:' + record.id);
+  if (!key || !record.id) return false;
   try {
-    window.localStorage.setItem(gameKey(record.id), JSON.stringify(record));
-  } catch {
-    // QuotaExceededError и подобные — не удалось сохранить в этот раз.
-    return false;
-  }
-  const index = readIndex();
-  if (!index.includes(record.id)) {
-    writeIndex([...index, record.id]);
-  }
-  return true;
+    if (!write(key, JSON.stringify(record))) return false;
+    const ids = readIds('index');
+    return ids.includes(record.id) || writeIds('index', [...ids, record.id]);
+  } catch { return false; }
 }
 
-/** Читает запись по id. null — если записи нет, storage недоступен, или JSON повреждён. */
-export function loadGame<T>(id: string): T | null {
-  if (!isStorageAvailable()) return null;
+/** A validator can check the domain schema. Even generic records must
+ * match their storage key; corrupt data cannot poison the index. */
+export function loadGame<T>(id: string, validate?: (value: unknown) => value is T): T | null {
+  const key = privateKey('game:' + id);
+  if (!key) return null;
+  const raw = read(key);
+  if (!raw) return null;
   try {
-    const raw = window.localStorage.getItem(gameKey(id));
-    if (!raw) return null;
-    return JSON.parse(raw) as T;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null || Array.isArray(value)
+      || (value as { id?: unknown }).id !== id || (validate && !validate(value))) {
+      deleteGame(id);
+      return null;
+    }
+    return value as T;
   } catch {
+    deleteGame(id);
     return null;
   }
 }
 
-/** Возвращает все сохранённые записи (только валидные — битые пропускаются и вычищаются из индекса). */
-export function listGames<T extends { id: string }>(): T[] {
-  const index = readIndex();
-  const result: T[] = [];
-  let hasCorrupted = false;
-
-  for (const id of index) {
-    const record = loadGame<T>(id);
-    if (record) {
-      result.push(record);
-    } else {
-      hasCorrupted = true;
-    }
-  }
-
-  if (hasCorrupted) {
-    writeIndex(result.map((record) => record.id));
-  }
-
+export function listGames<T extends { id: string }>(validate?: (value: unknown) => value is T): T[] {
+  const ids = readIds('index');
+  const result = ids.map((id) => loadGame<T>(id, validate)).filter((record): record is T => record !== null);
+  if (result.length !== ids.length) writeIds('index', result.map((record) => record.id));
   return result;
 }
 
-/** Удаляет запись и вычищает её из индекса. Никогда не бросает исключений. */
 export function deleteGame(id: string): void {
-  if (!isStorageAvailable()) return;
-  try {
-    window.localStorage.removeItem(gameKey(id));
-  } catch {
-    // ignore
-  }
-  writeIndex(readIndex().filter((existingId) => existingId !== id));
+  const key = privateKey('game:' + id);
+  if (!key) return;
+  write(key, null);
+  writeIds('index', readIds('index').filter((existing) => existing !== id));
 }
-
 export function getActiveGameId(): string | null {
-  if (!isStorageAvailable()) return null;
-  try {
-    return window.localStorage.getItem(ACTIVE_GAME_KEY);
-  } catch {
-    return null;
-  }
+  const key = privateKey('activeGameId');
+  return key ? read(key) || null : null;
 }
-
 export function setActiveGameId(id: string | null): void {
-  if (!isStorageAvailable()) return;
-  try {
-    if (id === null) {
-      window.localStorage.removeItem(ACTIVE_GAME_KEY);
-    } else {
-      window.localStorage.setItem(ACTIVE_GAME_KEY, id);
-    }
-  } catch {
-    // ignore
-  }
+  const key = privateKey('activeGameId');
+  if (key) write(key, id);
 }
 
-const HIDDEN_IDS_KEY = `${STORAGE_PREFIX}hiddenGameIds`;
-
-/**
- * "Мои партии" теперь читает список в первую очередь с сервера (см.
- * MyGames.tsx, п.1 ревью) — сервер не поддерживает удаление партий
- * (`DELETE /api/v1/games/:id` не существует, партии остаются в D1
- * навсегда). "Удалить" в UI поэтому означает "скрыть на этом устройстве",
- * а не настоящее удаление — список скрытых id хранится отдельно от
- * основного индекса локального кэша, чтобы работать даже для партий, у
- * которых locally-кэшированной записи никогда не было (открыты только на
- * другом устройстве).
- */
-export function getHiddenGameIds(): string[] {
-  if (!isStorageAvailable()) return [];
-  try {
-    const raw = window.localStorage.getItem(HIDDEN_IDS_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === 'string');
-  } catch {
-    return [];
-  }
+/** Use only as a hint for an authenticated server lookup, never to load
+ * a shared v1 snapshot or infer its owner. Server history survives migration. */
+export function getLegacyActiveGameId(): string | null {
+  return storageOwner ? read('leela:v1:activeGameId') || null : null;
 }
-
+export function clearLegacyActiveGameId(): void {
+  if (storageOwner) write('leela:v1:activeGameId', null);
+}
+export function getHiddenGameIds(): string[] { return readIds('hiddenGameIds'); }
 export function hideGameId(id: string): void {
-  if (!isStorageAvailable()) return;
-  const current = getHiddenGameIds();
-  if (current.includes(id)) return;
-  try {
-    window.localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify([...current, id]));
-  } catch {
-    // ignore — квота переполнена и на этот маленький список, не критично.
-  }
+  const ids = getHiddenGameIds();
+  if (!ids.includes(id)) writeIds('hiddenGameIds', [...ids, id]);
 }
-
-/**
- * Онбординг (HowToPlay) должен один раз показаться автоматически перед
- * самой первой партией пользователя и больше не навязываться — дальше он
- * доступен только по кнопке «Как играть» на Intro. isStorageAvailable()
- * недоступен (приватный режим и т.п.) — считаем, что онбординг ещё не
- * видели: он просто покажется снова при следующем визите, ничего не ломает.
- */
 export function getOnboardingSeen(): boolean {
-  if (!isStorageAvailable()) return false;
-  try {
-    return window.localStorage.getItem(ONBOARDING_SEEN_KEY) === '1';
-  } catch {
-    return false;
-  }
+  const key = privateKey('onboardingSeen');
+  return key ? read(key) === '1' : false;
 }
-
 export function setOnboardingSeen(): void {
-  if (!isStorageAvailable()) return;
-  try {
-    window.localStorage.setItem(ONBOARDING_SEEN_KEY, '1');
-  } catch {
-    // ignore — некритично, просто покажется ещё раз при следующем визите.
-  }
+  const key = privateKey('onboardingSeen');
+  if (key) write(key, '1');
 }

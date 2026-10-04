@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { createFakeD1 } from '../testUtils/fakeD1';
+import { describe, it, expect, afterEach } from 'vitest';
+import { createSqliteD1 } from '../testUtils/sqliteD1';
 import {
   getOrCreateUserBalance,
   getLatestSubscription,
@@ -9,9 +9,13 @@ import {
 import { listAnalyticsEvents } from '../analytics/repository';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from './catalog';
 
+const databases: ReturnType<typeof createSqliteD1>[] = [];
+function createTestD1(): D1Database { const database = createSqliteD1(); databases.push(database); return database.db; }
+afterEach(() => { databases.splice(0).forEach(({ sqlite }) => sqlite.close()); });
+
 describe('getOrCreateUserBalance', () => {
   it('первый вызов для нового telegram_id создаёт строку с дефолтами из §2 ТЗ', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const row = await getOrCreateUserBalance(db, 'user-1');
     expect(row.telegram_id).toBe('user-1');
     expect(row.free_games_remaining).toBe(FREE_GAMES_DEFAULT);
@@ -21,7 +25,7 @@ describe('getOrCreateUserBalance', () => {
   });
 
   it('повторный вызов для того же пользователя НЕ сбрасывает уже изменённый баланс (ON CONFLICT DO NOTHING, не UPDATE)', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await getOrCreateUserBalance(db, 'user-1');
     // Эмулируем "потратил бесплатную партию" прямой правкой строки — в
     // батче 1 функции списания ещё нет, это только проверка, что
@@ -36,7 +40,7 @@ describe('getOrCreateUserBalance', () => {
   });
 
   it('разные telegram_id получают независимые строки', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await getOrCreateUserBalance(db, 'user-1');
     const other = await getOrCreateUserBalance(db, 'user-2');
     expect(other.free_games_remaining).toBe(FREE_GAMES_DEFAULT);
@@ -45,12 +49,12 @@ describe('getOrCreateUserBalance', () => {
 
 describe('getLatestSubscription', () => {
   it('null, если подписки не было никогда', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     expect(await getLatestSubscription(db, 'user-1')).toBeNull();
   });
 
   it('возвращает строку с максимальным period_end среди нескольких (защитное чтение, §20 ТЗ)', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind('sub-old', 'user-1', 1000, 1, 100, 100)
@@ -66,7 +70,7 @@ describe('getLatestSubscription', () => {
   });
 
   it('истёкшая подписка тоже возвращается (решение "активна ли" — не задача этого запроса)', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind('sub-expired', 'user-1', 1, 1, 100, 100)
@@ -79,7 +83,7 @@ describe('getLatestSubscription', () => {
 
 describe('getEntitlements', () => {
   it('для нового пользователя — дефолты и отсутствие подписки', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const entitlements = await getEntitlements(db, 'user-1');
     expect(entitlements.freeGamesRemaining).toBe(FREE_GAMES_DEFAULT);
     expect(entitlements.freeAiReviewsRemaining).toBe(FREE_AI_REVIEWS_DEFAULT);
@@ -89,7 +93,7 @@ describe('getEntitlements', () => {
   });
 
   it('повторный вызов возвращает тот же результат (идемпотентное чтение)', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     const first = await getEntitlements(db, 'user-1');
     const second = await getEntitlements(db, 'user-1');
     expect(second).toEqual(first);
@@ -99,13 +103,13 @@ describe('getEntitlements', () => {
 
 describe('trackSubscriptionExpiryIfNeeded (батч 5, §26 — subscription_expired)', () => {
   it('нет подписки вообще — ничего не логирует', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await trackSubscriptionExpiryIfNeeded(db, 'user-1');
     expect(await listAnalyticsEvents(db, 'user-1')).toHaveLength(0);
   });
 
   it('активная подписка (period_end в будущем) — не логирует', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind('sub-1', 'user-1', Date.now() + 100000, 1, Date.now(), Date.now())
@@ -115,7 +119,7 @@ describe('trackSubscriptionExpiryIfNeeded (батч 5, §26 — subscription_exp
   });
 
   it('истёкшая подписка — логирует subscription_expired один раз', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind('sub-1', 'user-1', Date.now() - 1000, 1, Date.now(), Date.now())
@@ -127,7 +131,7 @@ describe('trackSubscriptionExpiryIfNeeded (батч 5, §26 — subscription_exp
   });
 
   it('повторный вызов для уже залогированной истёкшей подписки — не логирует снова', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind('sub-1', 'user-1', Date.now() - 1000, 1, Date.now(), Date.now())
@@ -139,7 +143,7 @@ describe('trackSubscriptionExpiryIfNeeded (батч 5, §26 — subscription_exp
   });
 
   it('не влияет на сам расчёт entitlements — истёкшая подписка и так корректно неактивна независимо от флага', async () => {
-    const db = createFakeD1();
+    const db = createTestD1();
     await db
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind('sub-1', 'user-1', Date.now() - 1000, 1, Date.now(), Date.now())

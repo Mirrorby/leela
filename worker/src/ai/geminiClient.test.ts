@@ -8,6 +8,16 @@ function geminiResponse(body: unknown, status = 200): Response {
 }
 
 describe('generateReview', () => {
+  it('bounds the short review output without using the output budget for thinking', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiResponse({ candidates: [{ content: { parts: [{ text: 'short' }] } }] }));
+    await generateReview('dummy', 'prompt', 'short');
+    expect(JSON.parse(fetchSpy.mock.calls[0][1]!.body as string).generationConfig)
+      .toEqual({ maxOutputTokens: 768, thinkingConfig: { thinkingBudget: 0 } });
+  });
+  it('rejects truncated provider output so the caller refunds the attempt', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiResponse({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'unfinished' }] } }] }));
+    await expect(generateReview('dummy', 'prompt', 'short')).rejects.toThrow('MAX_TOKENS');
+  });
   it('aborts a stalled provider request before waitUntil expires', async () => {
     vi.useFakeTimers();
     vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => new Promise((_resolve, reject) => {

@@ -2,6 +2,7 @@ import type { Entitlements } from '../types/payments';
 import { computeEntitlements } from './entitlements';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from './catalog';
 import { logAnalyticsEvent } from '../analytics/repository';
+import { ensureFreeGamePolicy } from './freeGamePolicy';
 
 export interface UserBalanceRow {
   telegram_id: string;
@@ -35,6 +36,7 @@ export interface SubscriptionRow {
  * открытие "Мои партии" тихо возвращало бы бесплатные партии.
  */
 export async function getOrCreateUserBalance(db: D1Database, telegramId: string): Promise<UserBalanceRow> {
+  await ensureFreeGamePolicy(db);
   const now = Date.now();
   await db
     .prepare(

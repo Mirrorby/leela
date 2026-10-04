@@ -28,7 +28,7 @@ describe('payments catalog', () => {
   });
 
   it('дефолты нового пользователя соответствуют §2 ТЗ', () => {
-    expect(FREE_GAMES_DEFAULT).toBe(2);
+    expect(FREE_GAMES_DEFAULT).toBe(1);
     expect(FREE_AI_REVIEWS_DEFAULT).toBe(1);
   });
 });

@@ -75,6 +75,14 @@ describe('worker routes', () => {
     expect(body.ok).toBe(true);
   });
 
+  it('/api/v1/me confirms the signed account and rejects missing auth or a wrong method', async () => {
+    expect((await worker.fetch(req('/api/v1/me'), env, fakeCtx)).status).toBe(401);
+    const auth = await authHeaderFor(111);
+    const response = await worker.fetch(req('/api/v1/me', { headers: { Authorization: auth } }), env, fakeCtx);
+    expect(await readJson(response)).toEqual({ telegramId: '111' });
+    expect((await worker.fetch(req('/api/v1/me', { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx)).status).toBe(405);
+  });
+
   it('запрос к /api/v1/games без заголовка Authorization отклоняется 401', async () => {
     const res = await worker.fetch(req('/api/v1/games'), env, fakeCtx);
     expect(res.status).toBe(401);
@@ -772,7 +780,7 @@ describe('монетизация (батч 1) — /api/v1/products и /api/v1/en
     expect(res.status).toBe(200);
     const body = await readJson(res);
     expect(body).toEqual({
-      freeGamesRemaining: 2,
+      freeGamesRemaining: 1,
       paidGames: 0,
       freeAiReviewsRemaining: 1,
       paidAiReviews: 0,
@@ -794,8 +802,8 @@ describe('монетизация (батч 1) — /api/v1/products и /api/v1/en
     const authB = await authHeaderFor(9005);
     const a = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: authA } }), env, fakeCtx));
     const b = await readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: authB } }), env, fakeCtx));
-    expect(a.freeGamesRemaining).toBe(2);
-    expect(b.freeGamesRemaining).toBe(2);
+    expect(a.freeGamesRemaining).toBe(1);
+    expect(b.freeGamesRemaining).toBe(1);
   });
 });
 
@@ -824,20 +832,19 @@ describe('монетизация (батч 2) — списание партий,
     return readJson(await worker.fetch(req('/api/v1/entitlements', { headers: { Authorization: auth } }), env, fakeCtx));
   }
 
-  it('первые 2 партии — бесплатно, списывается freeGamesRemaining (§2 ТЗ)', async () => {
+  it('первая партия — бесплатно; следующая требует оплаты, списывается freeGamesRemaining (§2 ТЗ)', async () => {
     const auth = await authHeaderFor(20001);
     const { res: res1 } = await createGame(auth);
     expect(res1.status).toBe(201);
-    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(1);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(0);
 
     const { res: res2 } = await createGame(auth);
-    expect(res2.status).toBe(201);
+    expect(res2.status).toBe(402);
     expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(0);
   });
 
-  it('3-я партия без баланса — 402 games_limit_reached с каталогом продуктов, партия НЕ создаётся', async () => {
+  it('2-я партия без баланса — 402 games_limit_reached с каталогом продуктов, партия НЕ создаётся', async () => {
     const auth = await authHeaderFor(20002);
-    await createGame(auth);
     await createGame(auth);
     const { res, body } = await createGame(auth);
     expect(res.status).toBe(402);
@@ -846,24 +853,26 @@ describe('монетизация (батч 2) — списание партий,
     expect(body.products.every((p: { grant: { games: number }; isSubscription: boolean }) => p.grant.games > 0 || p.isSubscription)).toBe(true);
 
     const list = await readJson(await worker.fetch(req('/api/v1/games', { headers: { Authorization: auth } }), env, fakeCtx));
-    expect(list.games).toHaveLength(2);
+    expect(list.games).toHaveLength(1);
   });
 
   it('повторный POST с тем же clientRequestId возвращает ту же партию и НЕ списывает баланс дважды', async () => {
     const auth = await authHeaderFor(20003);
     const { res: res1, body: body1 } = await createGame(auth, { clientRequestId: 'same-id' });
     expect(res1.status).toBe(201);
-    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(1);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(0);
 
     const { res: res2, body: body2 } = await createGame(auth, { clientRequestId: 'same-id' });
     expect(res2.status).toBe(200);
     expect(body2.game.id).toBe(body1.game.id);
     // Баланс не должен был списаться второй раз за тот же clientRequestId.
-    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(1);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(0);
   });
 
   it('разные clientRequestId — разные партии, баланс списывается за каждую', async () => {
     const auth = await authHeaderFor(20004);
+    await getOrCreateUserBalance(env.DB, '20004');
+    await env.DB.prepare('UPDATE user_balances SET paid_games = 1 WHERE telegram_id = ?').bind('20004').run();
     const { body: body1 } = await createGame(auth, { clientRequestId: 'id-1' });
     const { body: body2 } = await createGame(auth, { clientRequestId: 'id-2' });
     expect(body1.game.id).not.toBe(body2.game.id);
@@ -895,7 +904,7 @@ describe('монетизация (батч 2) — списание партий,
     const { res } = await createGame(auth);
     expect(res.status).toBe(201);
     const entitlements = await entitlementsFor(auth);
-    expect(entitlements.freeGamesRemaining).toBe(2); // не тронуто
+    expect(entitlements.freeGamesRemaining).toBe(1); // не тронуто
     expect(entitlements.paidGames).toBe(0); // не тронуто
     expect(entitlements.subscription?.active).toBe(true);
   });
@@ -903,14 +912,14 @@ describe('монетизация (батч 2) — списание партий,
   it('приоритет §3.3: активная подписка используется ПЕРЕД бесплатными партиями (free остаётся нетронутым)', async () => {
     const auth = await authHeaderFor(20007);
     const telegramId = String(20007);
-    await getOrCreateUserBalance(env.DB, telegramId); // free_games_remaining = 2
+    await getOrCreateUserBalance(env.DB, telegramId); // free_games_remaining = 1
     await env.DB
       .prepare('INSERT INTO subscriptions (id, telegram_id, period_end, auto_renew, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind('sub-1', telegramId, Date.now() + 1000 * 60 * 60 * 24 * 30, 1, Date.now(), Date.now())
       .run();
 
     await createGame(auth);
-    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(2);
+    expect((await entitlementsFor(auth)).freeGamesRemaining).toBe(1);
   });
 
   it('запрос без clientRequestId (обратная совместимость со старым фронтом) — партия создаётся, сервер сам генерирует id', async () => {
@@ -974,6 +983,31 @@ describe('монетизация (батч 4) — ИИ-разбор партии
     await env.DB.prepare("UPDATE games SET status = 'FINISHED' WHERE id = ?").bind(created.game.id).run();
     return created.game.id as string;
   }
+
+  it('validates the tier before charging; full requires payment and keeps the free short review', async () => {
+    const auth = await authHeaderFor(40201);
+    const gameId = await createFinishedGame(auth, 40201);
+    const start = (body: string) => worker.fetch(req(`/api/v1/games/${gameId}/analysis/start`, {
+      method: 'POST', headers: { Authorization: auth }, body,
+    }), env, fakeCtx);
+    for (const body of ['{', '{}', '{"kind":"other"}', 'null']) expect((await start(body)).status).toBe(400);
+    expect((await start('{"kind":"full"}')).status).toBe(402);
+    expect((await getOrCreateUserBalance(env.DB, '40201')).free_ai_reviews_remaining).toBe(1);
+    const provider = vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiOk('Краткий текст'));
+    expect((await start('{"kind":"short"}')).status).toBe(202);
+    await flushWaitUntil();
+    const read = async () => readJson(await worker.fetch(req(`/api/v1/games/${gameId}/analysis`, { headers: { Authorization: auth } }), env, fakeCtx));
+    expect(await read()).toMatchObject({ status: 'ready', kind: 'short', content: 'Краткий текст' });
+    expect((await start('{"kind":"full"}')).status).toBe(402);
+    await env.DB.prepare('UPDATE user_balances SET paid_ai_reviews = 1 WHERE telegram_id = ?').bind('40201').run();
+    provider.mockResolvedValue(geminiOk('Полный текст'));
+    expect((await start('{"kind":"full"}')).status).toBe(202);
+    await flushWaitUntil();
+    expect(await read()).toMatchObject({ status: 'ready', kind: 'full', content: 'Полный текст', shortContent: 'Краткий текст' });
+    expect((await start('{"kind":"full"}')).status).toBe(200);
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(await getOrCreateUserBalance(env.DB, '40201')).toMatchObject({ free_ai_reviews_remaining: 0, paid_ai_reviews: 0 });
+  });
 
   it('партия не найдена — 404', async () => {
     const auth = await authHeaderFor(40001);
@@ -1100,7 +1134,7 @@ describe('монетизация (батч 4) — ИИ-разбор партии
     await env.DB.prepare('UPDATE user_balances SET free_ai_reviews_remaining = 0, paid_ai_reviews = 2 WHERE telegram_id = ?')
       .bind('40101').run();
     const responses = await Promise.all([1, 2, 3].map(() => worker.fetch(
-      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth } }), env, fakeCtx
+      req(`/api/v1/games/${gameId}/analysis/start`, { method: 'POST', headers: { Authorization: auth }, body: JSON.stringify({ kind: 'full' }) }), env, fakeCtx
     )));
     expect(responses.map((res) => res.status).sort()).toEqual([202, 409, 409]);
     expect(fetchSpy).toHaveBeenCalledTimes(1);

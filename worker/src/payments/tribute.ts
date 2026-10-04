@@ -1,4 +1,5 @@
 import { FREE_AI_REVIEWS_DEFAULT, FREE_GAMES_DEFAULT, getProduct, listProducts } from './catalog';
+import { ensureFreeGamePolicy } from './freeGamePolicy';
 import type { Product } from '../types/payments';
 
 export interface TributeEnv {
@@ -148,6 +149,7 @@ function insertPurchase(db: D1Database, purchase: Purchase, mapping: Mapping, st
 }
 
 async function grantPurchase(db: D1Database, purchase: Purchase, mapping: Mapping): Promise<boolean> {
+  await ensureFreeGamePolicy(db);
   const now = Date.now();
   const telegramId = String(purchase.telegram_user_id);
   // D1 batch executes all statements in one transaction and rolls back on failure.

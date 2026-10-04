@@ -42,7 +42,7 @@ import type { GameState } from '../types/game';
  *     этого фикса), интерпретируем это как GameHome, а не как настоящий
  *     RequestInput/DiceModeSelect/Intro.
  */
-const PRE_GAME_SCREENS = new Set<ScreenName>(['Intro', 'RequestInput', 'DiceModeSelect']);
+const PRE_GAME_SCREENS = new Set<ScreenName>(['Intro', 'RequestInput', 'DiceModeSelect', 'Paywall']);
 
 export function resolveGameScreen(screen: ScreenName, game: GameState | null): ScreenName {
   if (game && PRE_GAME_SCREENS.has(screen)) {
@@ -67,6 +67,7 @@ const KNOWN_SCREENS = new Set<ScreenName>([
   'Splash',
   'MyGames',
   'Intro',
+  'HowToPlay',
   'RequestInput',
   'DiceModeSelect',
   'GameHome',

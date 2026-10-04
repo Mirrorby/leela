@@ -19,6 +19,26 @@ describe('AI review screen lifecycle', () => {
     return { get, start, changed, controller, last: () => changed.mock.calls.at(-1)?.[0] };
   }
 
+  it('keeps the free preview when requesting full analysis and when payment is missing', async () => {
+    const f = fixture(); f.get.mockResolvedValue({ status: 'ready', kind: 'short', content: 'preview', shortContent: 'preview' });
+    await f.controller.check();
+    f.start.mockRejectedValue(new WorkerApiError('pay', 402, null));
+    await f.controller.start('full');
+    expect(f.start).toHaveBeenCalledWith('full');
+    expect(f.last()).toMatchObject({ state: 'locked', kind: 'full', shortContent: 'preview' });
+    f.controller.dispose();
+  });
+  it('retains the preview during full generation and a failed result', async () => {
+    const f = fixture(); f.get.mockResolvedValue({ status: 'ready', kind: 'short', content: 'preview' });
+    await f.controller.check(); f.start.mockResolvedValue({ status: 'pending', kind: 'full', shortContent: 'preview' });
+    await f.controller.start('full');
+    expect(f.last()).toMatchObject({ state: 'pending', kind: 'full', shortContent: 'preview' });
+    f.get.mockResolvedValue({ status: 'failed', kind: 'full', shortContent: 'preview', error: 'refunded' });
+    await vi.advanceTimersByTimeAsync(REVIEW_POLL_INTERVAL_MS);
+    expect(f.last()).toMatchObject({ state: 'failed', kind: 'full', shortContent: 'preview' });
+    f.controller.dispose();
+  });
+
   it('a balance version conflict shows retry instead of polling a nonexistent task', async () => {
     const f = fixture();
     await f.controller.check();

@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
-import type { GameState } from '../types/game';
-import { listGamesOnServer, WorkerApiError } from '../api/workerClient';
+import { WorkerApiError } from '../api/workerClient';
+import { loadHistoryPage, type HistoryEntry } from '../state/historyRecovery';
+import { SessionSupersededError } from '../state/gameSessionController';
+import { setStorageOwner } from '../storage/localStorage';
 import {
-  listPersistedGames,
   removePersistedGame,
   setActivePersistedGameId,
-  getHiddenPersistedGameIds,
   hidePersistedGame,
-  type PersistedGame,
 } from '../state/persistence';
 import { resolveGameScreen, normalizeScreenName } from '../state/resolveGameScreen';
 
@@ -21,14 +20,6 @@ const STATUS_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 20;
 
-interface DisplayEntry {
-  id: string;
-  /** Состояние партии — ВСЕГДА с сервера, когда он доступен (сервер — источник
-   * истины). localRecord ниже используется только для навигации при
-   * "Продолжить" (какой экран открыть) и как офлайн-фолбэк для самого game. */
-  game: GameState;
-  localRecord: PersistedGame | null;
-}
 
 /**
  * Раньше этот экран целиком читал localStorage (listPersistedGames) — сервер
@@ -42,92 +33,102 @@ interface DisplayEntry {
  * фолбэком, если сервер недоступен.
  */
 export function MyGames({ session, nav }: ScreenProps) {
-  const [entries, setEntries] = useState<DisplayEntry[]>([]);
+  const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
-  function localRecordMap(): Map<string, PersistedGame> {
-    return new Map(listPersistedGames().map((r) => [r.id, r]));
-  }
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const generationRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const { reset, cancelPending } = session;
 
-  function toEntries(games: GameState[], hidden: Set<string>, localMap: Map<string, PersistedGame>): DisplayEntry[] {
-    return games.filter((g) => !hidden.has(g.id)).map((g) => ({ id: g.id, game: g, localRecord: localMap.get(g.id) ?? null }));
-  }
+  const accessDenied = useCallback((error: unknown) => {
+    if (!(error instanceof WorkerApiError) || ![401, 403].includes(error.status)) return false;
+    reset();
+    setStorageOwner(null);
+    setEntries([]);
+    setNextCursor(null);
+    setOffline(false);
+    return true;
+  }, [reset]);
 
-  const loadFirstPage = () => {
+  const loadFirstPage = useCallback(() => {
+    const generation = ++generationRef.current;
     setLoading(true);
+    setLoadingMore(false);
+    loadingMoreRef.current = false;
     setListError(null);
-    const hidden = new Set(getHiddenPersistedGameIds());
-    listGamesOnServer({ limit: PAGE_SIZE })
+    loadHistoryPage({ limit: PAGE_SIZE }, () => generationRef.current === generation)
       .then((page) => {
-        setEntries(toEntries(page.games, hidden, localRecordMap()));
+        if (generationRef.current !== generation) return;
+        setEntries(page.entries);
         setNextCursor(page.nextCursor);
-        setOffline(false);
+        setOffline(page.offline);
       })
-      .catch(() => {
-        // Сервер недоступен (офлайн, обрыв сети) — показываем то, что есть
-        // локально на этом устройстве, а не пустой экран.
-        const local = listPersistedGames().filter((r) => !hidden.has(r.id));
-        setEntries(local.map((r) => ({ id: r.id, game: r.game, localRecord: r })));
+      .catch((error) => {
+        if (generationRef.current !== generation) return;
+        accessDenied(error);
+        setEntries([]);
         setNextCursor(null);
-        setOffline(true);
+        setListError(error instanceof WorkerApiError ? error.message : 'Не удалось загрузить партии — попробуйте ещё раз.');
       })
-      .finally(() => setLoading(false));
-  };
+      .finally(() => { if (generationRef.current === generation) setLoading(false); });
+  }, [accessDenied]);
 
-  useEffect(loadFirstPage, []);
+  useEffect(() => {
+    loadFirstPage();
+    return () => { generationRef.current++; cancelPending(); };
+  }, [loadFirstPage, cancelPending]);
 
   const loadMore = () => {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMoreRef.current || loading) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     setListError(null);
-    const hidden = new Set(getHiddenPersistedGameIds());
-    listGamesOnServer({ limit: PAGE_SIZE, cursor: nextCursor })
+    const generation = generationRef.current;
+    loadHistoryPage({ limit: PAGE_SIZE, cursor: nextCursor }, () => generationRef.current === generation)
       .then((page) => {
-        const localMap = localRecordMap();
+        if (generationRef.current !== generation) return;
         setEntries((prev) => {
-          const existingIds = new Set(prev.map((e) => e.id));
-          const added = toEntries(page.games, hidden, localMap).filter((e) => !existingIds.has(e.id));
-          return [...prev, ...added];
+          const ids = new Set(prev.map((entry) => entry.id));
+          return [...prev, ...page.entries.filter((entry) => !ids.has(entry.id))];
         });
         setNextCursor(page.nextCursor);
       })
-      .catch((err) => {
-        setListError(err instanceof WorkerApiError ? err.message : 'Не удалось загрузить ещё партии — проверь соединение.');
+      .catch((error) => {
+        if (generationRef.current !== generation) return;
+        accessDenied(error);
+        setListError(error instanceof WorkerApiError ? error.message : 'Не удалось загрузить ещё партии — проверьте соединение.');
       })
-      .finally(() => setLoadingMore(false));
+      .finally(() => {
+        if (generationRef.current !== generation) return;
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      });
   };
 
-  const handleContinue = (entry: DisplayEntry) => {
-    // Локальный снимок (если есть) знает, на каком именно экране партии
-    // человек остановился; для партии, известной только с сервера (открыта
-    // впервые на этом устройстве), ведём сразу на GameHome — resolveGameScreen
-    // всё равно не пустит на предыгровые экраны для уже существующей партии
-    // (см. resolveGameScreen.ts), так что это безопасный дефолт.
-    const savedScreen = entry.localRecord ? normalizeScreenName(entry.localRecord.screen) : 'GameHome';
-    const record: PersistedGame = entry.localRecord
-      ? { ...entry.localRecord, game: entry.game }
-      : {
-          id: entry.game.id,
-          game: entry.game,
-          screen: 'GameHome',
-          lastEvents: [],
-          lastRollValue: null,
-          lastMove: null,
-          savedAt: entry.game.updatedAt,
-        };
-    session.restore(record);
-    nav.resetTo(resolveGameScreen(savedScreen, entry.game));
-    // Фоновый ресинк (см. useGameSession.syncFromServer) — entry.game уже
-    // актуален (только что с сервера), но на офлайн-фолбэке это могла быть
-    // устаревшая локальная копия; безвредный лишний запрос в обычном случае.
-    void session.syncFromServer(entry.game.id);
+  const handleContinue = async (entry: HistoryEntry) => {
+    if (openingId || session.isBusy) return;
+    const generation = generationRef.current;
+    setOpeningId(entry.id);
+    setListError(null);
+    try {
+      const record = await session.openGame(entry.id);
+      if (generationRef.current === generation) nav.resetTo(resolveGameScreen(normalizeScreenName(record.screen), record.game));
+    } catch (error) {
+      if (generationRef.current !== generation || error instanceof SessionSupersededError) return;
+      accessDenied(error);
+      if (error instanceof WorkerApiError && error.status === 404) setEntries((prev) => prev.filter((item) => item.id !== entry.id));
+      setListError('Не удалось открыть партию. Попробуйте обновить список или перезапустить игру через Telegram.');
+    } finally {
+      if (generationRef.current === generation) setOpeningId(null);
+    }
   };
 
-  const handleDelete = (entry: DisplayEntry) => {
+  const handleDelete = (entry: HistoryEntry) => {
     const isActive = session.game?.id === entry.id;
     // Честная формулировка (правка после ревью): сервер не поддерживает
     // удаление партии (DELETE /api/v1/games/:id не существует, запись
@@ -165,7 +166,7 @@ export function MyGames({ session, nav }: ScreenProps) {
       <h1>Мои партии</h1>
       {offline && <p className="muted screen-notice">Нет связи с сервером — показаны партии, сохранённые на этом устройстве.</p>}
       {loading && entries.length === 0 && <p className="muted">Загрузка…</p>}
-      {!loading && entries.length === 0 && <p className="muted">Сохранённых партий пока нет.</p>}
+      {!loading && !listError && entries.length === 0 && <p className="muted">Сохранённых партий пока нет.</p>}
       <ul className="game-list">
         {entries.map((entry) => (
           <li key={entry.id} className="game-list-item">
@@ -176,8 +177,10 @@ export function MyGames({ session, nav }: ScreenProps) {
               </div>
             </div>
             <div className="game-list-actions">
-              <button onClick={() => handleContinue(entry)}>Продолжить</button>
-              <button className="danger" onClick={() => handleDelete(entry)}>
+              <button onClick={() => { void handleContinue(entry); }} disabled={openingId !== null || session.isBusy}>
+                {openingId === entry.id ? 'Открываем…' : 'Продолжить'}
+              </button>
+              <button className="danger" onClick={() => handleDelete(entry)} disabled={openingId !== null}>
                 Удалить
               </button>
             </div>
@@ -185,6 +188,9 @@ export function MyGames({ session, nav }: ScreenProps) {
         ))}
       </ul>
       {listError && <p className="screen-error">{listError}</p>}
+      <button onClick={loadFirstPage} disabled={loading || openingId !== null}>
+        {loading ? 'Обновляем…' : 'Обновить список'}
+      </button>
       {nextCursor && !offline && (
         <button onClick={loadMore} disabled={loadingMore}>
           {loadingMore ? 'Загрузка…' : 'Загрузить ещё'}

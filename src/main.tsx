@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 // Путь к фоновому золотому мотиву мандалы зависит от base (см.
 // vite.config.ts: base: './'), поэтому не может быть зашит в CSS как
@@ -29,6 +30,6 @@ document.documentElement.style.setProperty(
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary><App /></ErrorBoundary>
   </StrictMode>,
 )
