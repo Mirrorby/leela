@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr } from '../i18n/language';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -164,7 +165,7 @@ export function MyGames({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-my-games">
-      <h1>{tr("Мои партии")}</h1>
+      <ScreenHeading>{tr("Мои партии")}</ScreenHeading>
       {offline && <p className="muted screen-notice">{tr("Нет связи с сервером — показаны партии, сохранённые на этом устройстве.")}</p>}
       {loading && entries.length === 0 && <p className="muted">{tr("Загрузка…")}</p>}
       {!loading && !listError && entries.length === 0 && <p className="muted">{tr("Сохранённых партий пока нет.")}</p>}

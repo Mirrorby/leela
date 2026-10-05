@@ -91,8 +91,8 @@ export function getActivePersistedGameId(): string | null {
   return getActiveGameId();
 }
 
-export function setActivePersistedGameId(id: string | null): void {
-  setActiveGameId(id);
+export function setActivePersistedGameId(id: string | null): boolean {
+  return setActiveGameId(id);
 }
 
 /** См. storage/localStorage.ts:hideGameId — "удалить" партию на сервере

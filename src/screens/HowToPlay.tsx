@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr } from '../i18n/language';
 
 import { useState } from 'react';
@@ -80,7 +81,7 @@ export function HowToPlay({ nav, params }: ScreenProps) {
       <div className="howtoplay-emoji" aria-hidden="true">
         {slide.emoji}
       </div>
-      <h1>{tr(slide.title)}</h1>
+      <ScreenHeading>{tr(slide.title)}</ScreenHeading>
       <p>{tr(slide.body)}</p>
 
       <div className="howtoplay-dots" role="tablist" aria-label={tr("Шаги обучения")}>

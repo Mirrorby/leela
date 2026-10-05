@@ -1,3 +1,4 @@
+import { LanguageControl } from '../i18n/LanguageControl';
 import { tr, getLanguage } from '../i18n/language';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { MoveTile } from '../components/MoveTile';
@@ -23,9 +24,11 @@ export function History({ session, nav }: ScreenProps) {
     <div className="screen screen-history">
       <div className="screen-header-row">
         <h1>{tr("История ходов")}</h1>
+        <div className="header-actions"><LanguageControl />
         <button className="icon-button" aria-label={tr("В меню")} onClick={() => nav.resetTo('Splash')}>
           ☰
         </button>
+        </div>
       </div>
       {game.turns.length === 0 ? (
         <p className="muted">{tr("Ходов пока не было — брось кубик, и они появятся здесь.")}</p>

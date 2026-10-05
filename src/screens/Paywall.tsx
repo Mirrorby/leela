@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr } from '../i18n/language';
 import { useEffect, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -42,7 +43,7 @@ export function Paywall({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-paywall">
-      <h1>{tr("Партии закончились")}</h1>
+      <ScreenHeading>{tr("Партии закончились")}</ScreenHeading>
       <p className="muted">{tr("Бесплатные и купленные партии закончились — выберите один из вариантов ниже.")}</p>
 
       {payments.loading && !payments.entitlements && <p className="muted">{tr("Загрузка…")}</p>}

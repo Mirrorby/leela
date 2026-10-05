@@ -827,20 +827,46 @@ button.icon-button {
   padding: 8px 14px;
 }
 
-.language-control {
-  display: flex;
-  justify-content: flex-end;
+.screen-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: .5rem;
-  padding: .5rem 0;
-  font-size: .8rem;
+  gap: 10px;
 }
-.language-control select {
-  color: var(--text, #302218);
-  background: var(--surface, #fff8eb);
-  border: 1px solid currentColor;
-  border-radius: .5rem;
-  padding: .35rem;
-  max-width: 10rem;
-  font: inherit;
+.screen-centered .screen-heading { padding-left: 48px; }
+.screen .screen-heading h1 { margin: 0; min-width: 0; }
+.header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.screen-header-row h1 { min-width: 0; }
+.language-control { position: relative; flex-shrink: 0; }
+.screen .language-trigger {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  line-height: 1;
+  border-radius: 50%;
 }
+.language-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 158px;
+  background: var(--bg-top);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: var(--shadow);
+}
+.screen .language-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 14px;
+}
+.screen .language-menu button[aria-checked="true"] { background: var(--accent-bg); font-weight: 700; }

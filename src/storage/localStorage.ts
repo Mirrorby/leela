@@ -90,9 +90,9 @@ export function getActiveGameId(): string | null {
   const key = privateKey('activeGameId');
   return key ? read(key) || null : null;
 }
-export function setActiveGameId(id: string | null): void {
+export function setActiveGameId(id: string | null): boolean {
   const key = privateKey('activeGameId');
-  if (key) write(key, id);
+  return key ? write(key, id) : false;
 }
 
 /** Use only as a hint for an authenticated server lookup, never to load

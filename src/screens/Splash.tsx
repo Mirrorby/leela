@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr } from '../i18n/language';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { getDisplayUser } from '../telegram/telegramAdapter';
@@ -10,7 +11,7 @@ export function Splash({ nav }: ScreenProps) {
 
   return (
     <div className="screen screen-centered">
-      <h1>{tr("Лила")}</h1>
+      <ScreenHeading>{tr("Лила")}</ScreenHeading>
       <p>{displayName ? tr("С возвращением, {0}!", displayName) : tr("Познай истинного себя и найди ответы на свои вопросы")}</p>
       <button className="primary" onClick={() => nav.push('Intro')}>{tr("Новая партия")} </button>
       <button onClick={() => nav.push('MyGames')}>{tr("Мои партии")}</button>

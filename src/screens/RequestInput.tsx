@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr } from '../i18n/language';
 import { useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -8,7 +9,7 @@ export function RequestInput({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-centered">
-      <h1>{tr("Твой запрос")}</h1>
+      <ScreenHeading>{tr("Твой запрос")}</ScreenHeading>
       <p>{tr("С чем ты хочешь поработать в этой партии?")}</p>
       <textarea
         value={value}

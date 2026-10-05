@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr } from '../i18n/language';
 import { useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -41,7 +42,7 @@ export function DiceModeSelect({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-centered">
-      <h1>{tr("Кубик")}</h1>
+      <ScreenHeading>{tr("Кубик")}</ScreenHeading>
       <p>{tr("Как будем бросать кубик в этой партии?")}</p>
       <button className="primary" onClick={() => choose('virtual')} disabled={pending !== null}>{tr("Виртуальный — приложение бросает само")} </button>
       <button onClick={() => choose('physical')} disabled={pending !== null}>{tr("Физический — я введу результат сам")} </button>

@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr, locale } from '../i18n/language';
 import { useEffect } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -22,7 +23,7 @@ export function YourAccess({ nav }: ScreenProps) {
 
   return (
     <div className="screen screen-your-access">
-      <h1>{tr("Ваш доступ")}</h1>
+      <ScreenHeading>{tr("Ваш доступ")}</ScreenHeading>
 
       {payments.loading && !payments.entitlements && <p className="muted">{tr("Загрузка…")}</p>}
 

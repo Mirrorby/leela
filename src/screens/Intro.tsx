@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr } from '../i18n/language';
 import type { ScreenProps } from '../navigation/ScreenProps';
 import { hasSeenOnboarding } from '../state/persistence';
@@ -21,7 +22,7 @@ export function Intro({ nav }: ScreenProps) {
 
   return (
     <div className="screen screen-centered">
-      <h1>{tr("Лила — игра-трансформация")}</h1>
+      <ScreenHeading>{tr("Лила — игра-трансформация")}</ScreenHeading>
       <p>{tr("Лила — древняя игра духовного развития. Ты формулируешь запрос, а движение фишки по полю\n        через броски кубика становится зеркалом твоего пути.")} </p>
       <p className="muted">{tr("Первая партия и один краткий ИИ-разбор — бесплатно. Следующие партии и полный разбор можно купить отдельно.")}</p>
       <button className="primary" onClick={startGame}>{tr("Начать")} </button>

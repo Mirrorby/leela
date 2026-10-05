@@ -1,3 +1,5 @@
+import { ScreenHeading } from '../components/ScreenHeading';
+import { LanguageControl } from '../i18n/LanguageControl';
 import { tr } from '../i18n/language';
 import { useEffect, useRef, useState } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -90,7 +92,7 @@ export function GameHome({ session, nav }: ScreenProps) {
   if (!game) {
     return (
       <div className="screen screen-centered">
-        <p>{tr("Партия ещё не создана.")}</p>
+        <ScreenHeading>{tr("Лила")}</ScreenHeading><p>{tr("Партия ещё не создана.")}</p>
         <button className="primary" onClick={() => nav.resetTo('Splash')}>{tr("В начало")} </button>
       </div>
     );
@@ -294,9 +296,11 @@ export function GameHome({ session, nav }: ScreenProps) {
           <span className="cell-number">{topLabel}</span>
           {topSnippet && <span className="cell-snippet">{topSnippet}</span>}
         </div>
+        <div className="header-actions"><LanguageControl />
         <button className="icon-button" aria-label={tr("Мои партии")} onClick={() => nav.push('MyGames')}>
           <GamesListIcon />
         </button>
+        </div>
       </div>
 
       <div className="game-home-board">

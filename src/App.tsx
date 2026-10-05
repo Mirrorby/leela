@@ -1,4 +1,4 @@
-import { LanguageControl } from './i18n/LanguageControl';
+import { OperationStorageError } from './state/pendingOperations';
 import { tr, useLanguage } from './i18n/language';
 import { useCallback, useEffect, useState } from 'react';
 import { useGameSession } from './state/useGameSession';
@@ -58,7 +58,7 @@ function App() {
         if (!current) return;
         session.reset();
         setStack([{ name: 'Splash' }]);
-        setRecoveryNotice(error instanceof WorkerApiError && [401, 403].includes(error.status)
+        setRecoveryNotice(error instanceof OperationStorageError ? error.message : error instanceof WorkerApiError && [401, 403].includes(error.status)
           ? tr("Откройте игру через Telegram, чтобы получить доступ к своим партиям.")
           : tr("Не удалось подключиться к серверу. Повторите подключение, чтобы открыть сохранённые партии."));
       })
@@ -115,13 +115,13 @@ function App() {
   }, [hydrated, session.game, session.lastEvents, session.lastRollValue, session.lastMove, current.name]);
 
   if (!hydrated) {
-    return <div className="app-shell"><LanguageControl /><p className="muted">{tr("Подключаемся к игре…")}</p></div>;
+    return <div className="app-shell"><p className="muted">{tr("Подключаемся к игре…")}</p></div>;
   }
 
   const CurrentScreen = screens[current.name];
 
   return (
-    <div className="app-shell"><LanguageControl />
+    <div className="app-shell">
       {recoveryNotice && <div role="status" className="screen-notice">
         <p>{recoveryNotice}</p>
         <button onClick={() => setRecoveryAttempt((attempt) => attempt + 1)}>{tr("Повторить подключение")}</button>

@@ -1,3 +1,4 @@
+import { ScreenHeading } from '../components/ScreenHeading';
 import { tr, useLanguage } from '../i18n/language';
 import { useEffect, useRef } from 'react';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -34,7 +35,7 @@ export function Summary({ session, nav }: ScreenProps) {
 
   return (
     <div className="screen screen-summary">
-      <h1>{tr("Итог партии")}</h1>
+      <ScreenHeading>{tr("Итог партии")}</ScreenHeading>
       <p className="muted">{tr("Запрос:")} {game.request}</p>
       <p className="muted">{tr("Ходов всего:")} {game.turns.length}</p>
       {game.turns.length > 0 && (

@@ -179,5 +179,10 @@
   "Полный ИИ-разбор партии": "Full AI game review",
   "Партия + полный ИИ-разбор": "Game + full AI review",
   "Не удалось создать разбор. Попытка возвращена на баланс — можно попробовать ещё раз.": "Could not create a review. Your credit has been restored. You can try again.",
-  "Сохранённый разбор остаётся на языке, на котором был создан.": "A saved review stays in the language in which it was created."
+  "Сохранённый разбор остаётся на языке, на котором был создан.": "A saved review stays in the language in which it was created.",
+  "Не удалось сохранить запрос на устройстве. Освободите место или разрешите локальное хранилище и попробуйте снова.": "Could not save the request on this device. Free up storage or allow local storage, then try again.",
+  "Не удалось подтвердить последний бросок. Следующая попытка повторит тот же запрос.": "Could not confirm the last roll. Your next attempt will retry the same request.",
+  "Выбрать язык": "Choose language",
+  "Английский": "English",
+  "Русский": "Russian"
 }

@@ -1,3 +1,4 @@
+import { prepareStart, prepareRoll, clearPendingOperation, confirmPendingOperation, type PendingStart, type PendingRoll } from './pendingOperations';
 import { tr } from '../i18n/language';
 import type { DiceMode, GameState, RollEvent } from '../types/game';
 import { createGameOnServer, getGameFromServer, rollOnServer, WorkerApiError } from '../api/workerClient';
@@ -24,9 +25,6 @@ export function createGameSessionController(api: SessionApi = { create: createGa
   const listeners = new Set<() => void>();
   let epoch = 0;
   let revision = 0;
-  let pendingStart: { id: string; request: string; mode: DiceMode } | null = null;
-  let pendingRoll: { gameId: string; id: string; value?: number; mode: DiceMode } | null = null;
-  const id = () => crypto.randomUUID();
   function update(patch: Partial<SessionSnapshot>) {
     snapshot = { ...snapshot, ...patch };
     listeners.forEach((listener) => listener());
@@ -42,7 +40,6 @@ export function createGameSessionController(api: SessionApi = { create: createGa
   }
   function reset() {
     epoch++; revision++;
-    pendingStart = pendingRoll = null;
     setActivePersistedGameId(null);
     snapshot = initial();
     listeners.forEach((listener) => listener());
@@ -62,7 +59,6 @@ export function createGameSessionController(api: SessionApi = { create: createGa
     restore(record: PersistedGame) {
       if (!isSessionSnapshot(record)) throw new Error(tr("Некорректное сохранение партии"));
       epoch++; revision++;
-      pendingStart = pendingRoll = null;
       update({ game: record.game, request: record.game.request, diceMode: record.game.diceMode,
         lastEvents: record.lastEvents, lastRollValue: record.lastRollValue, lastMove: record.lastMove, isBusy: false, error: null });
     },
@@ -94,7 +90,6 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         }
         requireCurrent(operation);
         epoch++; revision++;
-        pendingStart = pendingRoll = null;
         update({ game: record.game, request: record.game.request, diceMode: record.game.diceMode,
           lastEvents: record.lastEvents, lastRollValue: record.lastRollValue, lastMove: record.lastMove, isBusy: false, error: null });
         persistGame(record);
@@ -107,19 +102,20 @@ export function createGameSessionController(api: SessionApi = { create: createGa
     },
     async startGame(overrides?: { diceMode?: DiceMode }) {
       if (snapshot.isBusy) throw new Error(tr("Запрос уже выполняется"));
-      // A retry preserves the original payload as well as its key.
-      pendingStart ??= { id: id(), request: snapshot.request, mode: overrides?.diceMode ?? snapshot.diceMode };
-      const request = pendingStart;
+      // Persist before sending, preserving the key and payload across reloads.
+      let request: PendingStart | undefined;
       const operation = token();
       update({ isBusy: true, error: null });
       try {
+        request = prepareStart(snapshot.request, overrides?.diceMode ?? snapshot.diceMode);
         const game = await api.create(request.request, request.mode, request.id);
         requireCurrent(operation);
-        pendingStart = pendingRoll = null;
+        confirmPendingOperation(request, game);
         clearHints(game);
         return game;
       } catch (error) {
         requireCurrent(operation);
+        if (request && error instanceof WorkerApiError && [400, 402].includes(error.status)) clearPendingOperation(request);
         const isPaywall = error instanceof WorkerApiError && error.status === 402
           && (error.body as { error?: string } | null)?.error === 'games_limit_reached';
         if (error instanceof WorkerApiError && [401, 403].includes(error.status)) {
@@ -136,11 +132,11 @@ export function createGameSessionController(api: SessionApi = { create: createGa
       const game = snapshot.game;
       if (!game) throw new Error(tr("Партия ещё не создана"));
       if (snapshot.isBusy) throw new Error(tr("Запрос уже выполняется"));
-      if (!pendingRoll || pendingRoll.gameId !== game.id) pendingRoll = { gameId: game.id, id: id(), value, mode: game.diceMode };
-      const request = pendingRoll;
+      let request: PendingRoll | undefined;
       const operation = token();
       update({ isBusy: true, error: null });
       try {
+        request = prepareRoll(game.id, game.diceMode, value);
         const result = await api.roll(game.id, request.id, request.value, request.mode);
         requireCurrent(operation);
         const moveEvent = result.events.find((event) => event.type === 'MOVE');
@@ -148,12 +144,14 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         const move: LastMove | null = moveEvent ? {
           fromCell: base, landedCell: moveEvent.detail?.startsWith('overshoot') ? base : base + result.value, finalCell: result.game.currentCell,
         } : null;
-        pendingRoll = null;
+        confirmPendingOperation(request, result.game);
         update({ game: result.game, request: result.game.request, diceMode: result.game.diceMode,
           lastEvents: result.events, lastRollValue: result.value, lastMove: move });
         return { ...result, move };
       } catch (error) {
         requireCurrent(operation);
+        if (request && error instanceof WorkerApiError && (error.status === 400 || error.status === 404 ||
+          (error.status === 409 && (error.body as { error?: string } | null)?.error === 'game_finished'))) clearPendingOperation(request);
         if (error instanceof WorkerApiError && [401, 403, 404].includes(error.status)) {
           removePersistedGame(game.id);
           reset();
