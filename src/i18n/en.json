@@ -191,5 +191,8 @@
   "Запрос слишком большой. Сократите текст и попробуйте снова.": "The request is too large. Shorten the text and try again.",
   "Достигнут предел истории этой партии. Сохранённые ходы доступны в истории; можно начать новую партию.": "This game has reached its history limit. Saved moves remain available in History; you can start a new game.",
   "Некорректный идентификатор запроса. Перезапустите игру через Telegram.": "The request identifier is invalid. Reopen the game through Telegram.",
-  "Эта партия слишком большая для ИИ-разбора. Её история сохранена, попытка не списана.": "This game is too large for an AI review. Its history is saved and no review credit was used."
+  "Эта партия слишком большая для ИИ-разбора. Её история сохранена, попытка не списана.": "This game is too large for an AI review. Its history is saved and no review credit was used.",
+  "Нужна помощь с оплатой?": "Need help with payment?",
+  "Написать автору": "Contact the creator",
+  "Поддержка Tribute": "Tribute Support"
 }

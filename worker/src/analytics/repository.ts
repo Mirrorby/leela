@@ -1,16 +1,13 @@
-/**
- * §26 ТЗ — ровно тот список событий, что в файле, без реконструкции.
- * Для событий покупки (payment_success, ai_payment_success,
- * subscription_started/renewed) payload обязан нести productId (и
- * starsAmount — не требуется явно, но бесплатно вытекает из уже известного
- * значения в момент вызова, оставляю для полноты картины воронки).
- */
+/** Client observations never confirm payment. Tribute confirmations/refunds
+ * use durable receipts in paymentEvents.ts; nonfinancial events are best effort. */
 export type AnalyticsEvent =
   | 'paywall_opened'
   | 'product_selected'
+  | 'checkout_clicked'
   | 'payment_started'
   | 'payment_success'
   | 'payment_failed'
+  | 'payment_refunded'
   | 'free_game_started'
   | 'paid_game_started'
   | 'subscription_game_started'

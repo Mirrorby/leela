@@ -1,44 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import type { DatabaseSync } from 'node:sqlite';
+import { createSqliteD1 } from '../testUtils/sqliteD1';
 import worker, { type Env } from '../index';
 import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './tribute';
 import { listProducts } from './catalog';
 import { getEntitlements } from './repository';
-
-// Real SQLite runs the production SQL, including constraints and rollback.
-// This adapter only maps D1's API to SQLite; it never recognizes SQL strings.
-function sqliteD1(sqlite: DatabaseSync): D1Database {
-  function prepare(sql: string) {
-    let args: SQLInputValue[] = [];
-    function execute() {
-      const result = sqlite.prepare(sql).run(...args);
-      return { success: true, results: [], meta: { changes: Number(result.changes) } };
-    }
-    return {
-      bind(...values: SQLInputValue[]) { args = values; return this; },
-      async first() { return sqlite.prepare(sql).get(...args) ?? null; },
-      async run() { return execute(); },
-      execute,
-    };
-  }
-  return {
-    prepare,
-    async batch(statements: D1PreparedStatement[]) {
-      sqlite.exec('BEGIN');
-      try {
-        const results = [];
-        // Keep the synchronous SQLite transaction uninterrupted, as with D1.
-        for (const statement of statements) results.push((statement as unknown as { execute: () => unknown }).execute());
-        sqlite.exec('COMMIT');
-        return results;
-      } catch (error) {
-        sqlite.exec('ROLLBACK');
-        throw error;
-      }
-    },
-  } as unknown as D1Database;
-}
+import { reconcileTributePaymentAnalytics } from './paymentEvents';
 
 const secret = 'test-tribute-key';
 const mapping = JSON.stringify({
@@ -60,17 +27,94 @@ describe('Tribute payments', () => {
   let env: TributeEnv;
 
   beforeEach(() => {
-    sqlite = new DatabaseSync(':memory:');
-    for (const name of ['0006_create_user_balances.sql', '0007_create_subscriptions.sql', '0012_add_subscription_expired_notified.sql', '0013_create_tribute_purchases.sql']) {
-      sqlite.exec(readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8'));
-    }
-    env = { DB: sqliteD1(sqlite), TRIBUTE_API_KEY: secret, TRIBUTE_PRODUCTS: mapping };
+    const database = createSqliteD1(); sqlite = database.sqlite;
+    env = { DB: database.db, TRIBUTE_API_KEY: secret, TRIBUTE_PRODUCTS: mapping };
   });
 
   afterEach(() => { sqlite.close(); vi.restoreAllMocks(); });
 
   const send = async (name = 'new_digital_product', fields: Record<string, unknown> = {}) =>
     handleTributeWebhook(await signedRequest(name, fields), env);
+
+  it('records confirmed purchases and refunds once despite concurrent retries', async () => {
+    await Promise.all([send(), send(), send()]);
+    const success = sqlite.prepare('SELECT * FROM analytics_events').all();
+    expect(success).toHaveLength(1);
+    expect(success[0]).toMatchObject({ id: 'payment:tribute:789:success', telegram_id: '111', event: 'payment_success' });
+    expect(JSON.parse(success[0].payload as string)).toMatchObject({ provider: 'tribute', purchaseId: '789',
+      transactionId: '456', productId: 'game_5', amount: 49900, currency: 'RUB', grant: { games: 5, aiReviews: 0 } });
+    env.TRIBUTE_PRODUCTS = '{}';
+    await Promise.all([send('digital_product_refunded'), send('digital_product_refunded')]);
+    expect(sqlite.prepare('SELECT event FROM analytics_events ORDER BY event').all())
+      .toEqual([{ event: 'payment_refunded' }, { event: 'payment_success' }]);
+    expect((await getEntitlements(env.DB, '111')).paidGames).toBe(0);
+    expect(sqlite.prepare('SELECT * FROM payment_event_outbox').all()).toHaveLength(0);
+  });
+
+  it('distinguishes AI purchases from combined purchases in confirmed analytics', async () => {
+    env.TRIBUTE_PRODUCTS = JSON.stringify({ 125: { productId: 'ai_review_1', amount: 199, currency: 'USD' },
+      124: { productId: 'game_ai_combo', amount: 29900, currency: 'RUB' } });
+    await send('new_digital_product', { product_id: 125, amount: 199, currency: 'USD' });
+    await send('new_digital_product', { product_id: 124, purchase_id: 790, transaction_id: 457, amount: 29900 });
+    expect(sqlite.prepare('SELECT event FROM analytics_events ORDER BY id').all())
+      .toEqual([{ event: 'ai_payment_success' }, { event: 'payment_success' }]);
+    expect(await getEntitlements(env.DB, '111')).toMatchObject({ paidGames: 1, paidAiReviews: 2 });
+  });
+
+  it('keeps credited access and durable receipts during an analytics outage, then delivers once', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    sqlite.exec("CREATE TRIGGER fail_analytics BEFORE INSERT ON analytics_events BEGIN SELECT RAISE(ABORT, 'outage'); END");
+    expect((await send()).status).toBe(200);
+    const receipt = sqlite.prepare('SELECT * FROM payment_event_outbox').get();
+    expect(receipt).toBeTruthy();
+    expect((await send()).status).toBe(200);
+    expect((await getEntitlements(env.DB, '111')).paidGames).toBe(5);
+    expect(sqlite.prepare('SELECT * FROM analytics_events').all()).toHaveLength(0);
+    sqlite.exec('DROP TRIGGER fail_analytics');
+    await Promise.all([reconcileTributePaymentAnalytics(env.DB), reconcileTributePaymentAnalytics(env.DB)]);
+    expect(sqlite.prepare('SELECT * FROM analytics_events').all()).toHaveLength(1);
+    expect(sqlite.prepare('SELECT created_at FROM analytics_events').get()?.created_at).toBe(receipt?.created_at);
+    expect(sqlite.prepare('SELECT * FROM payment_event_outbox').all()).toHaveLength(0);
+  });
+
+  it('rolls back access if its durable receipt cannot be saved, and permits a retry', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    sqlite.exec("CREATE TRIGGER fail_receipt BEFORE INSERT ON payment_event_outbox BEGIN SELECT RAISE(ABORT, 'outage'); END");
+    expect((await send()).status).toBe(500);
+    expect(sqlite.prepare('SELECT * FROM tribute_purchases').all()).toHaveLength(0);
+    expect(sqlite.prepare('SELECT * FROM user_balances').all()).toHaveLength(0);
+    sqlite.exec('DROP TRIGGER fail_receipt');
+    await send();
+    expect((await getEntitlements(env.DB, '111')).paidGames).toBe(5);
+    expect(sqlite.prepare('SELECT * FROM analytics_events').all()).toHaveLength(1);
+  });
+
+  it('repairs pre-rollout omissions without inventing a success for a refund-first tombstone', async () => {
+    await send();
+    sqlite.exec('DELETE FROM analytics_events');
+    await send('digital_product_refunded', { purchase_id: 790, transaction_id: 457 });
+    await reconcileTributePaymentAnalytics(env.DB);
+    await reconcileTributePaymentAnalytics(env.DB);
+    expect(sqlite.prepare('SELECT id FROM analytics_events ORDER BY id').all()).toEqual([
+      { id: 'payment:tribute:789:success' }, { id: 'payment:tribute:790:refund' },
+    ]);
+    await send('new_digital_product', { purchase_id: 790, transaction_id: 457 });
+    expect((await getEntitlements(env.DB, '111')).paidGames).toBe(5);
+    expect(sqlite.prepare('SELECT * FROM analytics_events').all()).toHaveLength(2);
+  });
+
+  it('rolls back a refund when its receipt fails and reconciles it only once on retry', async () => {
+    await send();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    sqlite.exec("CREATE TRIGGER fail_receipt BEFORE INSERT ON payment_event_outbox BEGIN SELECT RAISE(ABORT, 'outage'); END");
+    expect((await send('digital_product_refunded')).status).toBe(500);
+    expect((await getEntitlements(env.DB, '111')).paidGames).toBe(5);
+    expect(sqlite.prepare('SELECT status FROM tribute_purchases').get()?.status).toBe('successful');
+    sqlite.exec('DROP TRIGGER fail_receipt');
+    await send('digital_product_refunded'); await send('digital_product_refunded');
+    expect((await getEntitlements(env.DB, '111')).paidGames).toBe(0);
+    expect(sqlite.prepare("SELECT * FROM analytics_events WHERE event = 'payment_refunded'").all()).toHaveLength(1);
+  });
 
   it('publishes checkout URLs and prices from the webhook mappings without exposing the key or changing grants', () => {
     env.TRIBUTE_PRODUCTS = JSON.stringify({

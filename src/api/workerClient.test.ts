@@ -11,6 +11,7 @@ import {
   getGameFromServer,
   getAccountFromServer,
   logClientAnalyticsEvent,
+  logTributeCheckoutClick,
   WorkerApiError,
 } from './workerClient';
 import { makeGame } from '../testUtils/fixtures';
@@ -21,6 +22,13 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('workerClient', () => {
+  it('sends only the product and click identity for Tribute telemetry', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+    await logTributeCheckoutClick('game_1', 'click-1');
+    const [url, init] = spy.mock.calls[0];
+    expect(String(url)).toContain('/api/v1/analytics/event');
+    expect(JSON.parse(init!.body as string)).toEqual({ event: 'tribute_checkout_clicked', productId: 'game_1', clientEventId: 'click-1' });
+  });
   beforeEach(() => {
     setLanguagePreference('ru');
     vi.spyOn(telegramAdapter, 'getInitData').mockReturnValue('auth_date=1&user=%7B%22id%22%3A1%7D&hash=abc');

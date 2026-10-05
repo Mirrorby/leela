@@ -227,3 +227,10 @@ function apiErrorMessage(body: ErrorBody | null, status: number): string {
   if (status === 404) return tr('Партия недоступна. Откройте «Мои партии» или перезапустите игру через Telegram.');
   return getLanguage() === 'en' ? 'The request could not be completed. Please try again.' : body?.detail ?? tr('Неизвестная ошибка сервера');
 }
+
+/** A checkout click is observational; only a signed payment webhook grants access. */
+export async function logTributeCheckoutClick(productId: Product['id'], clientEventId: string): Promise<void> {
+  await apiFetch('/api/v1/analytics/event', {
+    method: 'POST', body: JSON.stringify({ event: 'tribute_checkout_clicked', productId, clientEventId }),
+  });
+}

@@ -1,3 +1,5 @@
+import support from '../data/paymentSupport.json';
+import { logTributeCheckoutClick } from '../api/workerClient';
 import { tr } from '../i18n/language';
 import type { MouseEvent } from 'react';
 import type { Product } from '../types/payments';
@@ -28,6 +30,8 @@ export function ProductPurchaseButton({ product, disabled = false, label = tr("�
       event.preventDefault();
       webApp.openLink(url);
     }
+    // Keep opening the link synchronous so mobile browsers preserve the gesture.
+    trackCheckoutClick(product);
   };
   return (
     <a className="purchase-link primary" href={url} target="_blank" rel="noopener noreferrer"
@@ -37,11 +41,17 @@ export function ProductPurchaseButton({ product, disabled = false, label = tr("�
   );
 }
 
+export function trackCheckoutClick(product: Product): void {
+  // Analytics failures (including storage/UUID availability) cannot block purchase.
+  try { void logTributeCheckoutClick(product.id, crypto.randomUUID()).catch(() => {}); } catch { /* Optional telemetry. */ }
+}
+
 export function TributePaymentNotice({ loading, onRefresh }: { loading: boolean; onRefresh: () => void }) {
   return (
     <div className="tribute-payment-notice">
       <p className="muted">{tr("Оплата откроется в Tribute. Войдите через тот же Telegram-аккаунт, с которым играете в Лилу. После оплаты вернитесь в игру.")}</p>
       <button disabled={loading} onClick={onRefresh}>{loading ? tr("Проверяем баланс…") : tr("Обновить баланс после оплаты")}</button>
+      <p className="muted">{tr("Нужна помощь с оплатой?")} <a href={support.authorUrl} target="_blank" rel="noopener noreferrer">{tr("Написать автору")}</a> · <a href={support.tributeUrl} target="_blank" rel="noopener noreferrer">{tr("Поддержка Tribute")}</a></p>
     </div>
   );
 }

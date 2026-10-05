@@ -1416,6 +1416,46 @@ describe('монетизация (батч 5) — аналитика §26', () =
 });
 
 
+describe('Tribute checkout observations', () => {
+  let env: Env;
+  beforeEach(() => { env = makeEnv(); });
+  async function click(owner: number, overrides: Record<string, unknown> = {}) {
+    return worker.fetch(req('/api/v1/analytics/event', { method: 'POST', headers: { Authorization: await authHeaderFor(owner) },
+      body: JSON.stringify({ event: 'tribute_checkout_clicked', productId: 'game_1', clientEventId: 'click-1', ...overrides }),
+    }), env, fakeCtx);
+  }
+
+  it('deduplicates within an authenticated account and uses authoritative product prices', async () => {
+    expect((await click(70001, { telegramId: '999', amount: 1, currency: 'XTR' })).status).toBe(200);
+    expect((await click(70001)).status).toBe(200);
+    expect((await click(70002)).status).toBe(200);
+    for (const owner of ['70001', '70002']) {
+      const events = await listAnalyticsEvents(env.DB, owner);
+      expect(events.map(e => e.event).sort()).toEqual(['checkout_clicked', 'product_selected']);
+      expect(events.every(e => JSON.stringify(JSON.parse(e.payload!)) === JSON.stringify({
+        provider: 'tribute', productId: 'game_1', amount: 159, currency: 'USD',
+      }))).toBe(true);
+      expect((await getOrCreateUserBalance(env.DB, owner)).paid_games).toBe(0);
+    }
+    expect(await listAnalyticsEvents(env.DB, '999')).toHaveLength(0);
+  });
+
+  it.each([{ event: 'payment_success' }, { event: 'payment_refunded' }, { productId: 'subscription_unlimited' },
+    { productId: 'missing' }, { clientEventId: '' }, { clientEventId: 'x'.repeat(129) }])
+    ('rejects forged confirmations and invalid product/click identities %j', async (fields) => {
+      expect((await click(70001, fields)).status).toBe(400);
+      expect(await listAnalyticsEvents(env.DB, '70001')).toHaveLength(0);
+    });
+
+  it('reports an analytics outage without modifying entitlement or leaving half a click pair', async () => {
+    await env.DB.prepare(`CREATE TRIGGER fail_click BEFORE INSERT ON analytics_events
+      WHEN NEW.event = 'checkout_clicked' BEGIN SELECT RAISE(ABORT, 'outage'); END`).run();
+    expect((await click(70001)).status).toBe(503);
+    expect(await listAnalyticsEvents(env.DB, '70001')).toHaveLength(0);
+    expect((await getOrCreateUserBalance(env.DB, '70001')).paid_games).toBe(0);
+  });
+});
+
 describe('API resource limits and safe retries', () => {
   let env: Env; let auth: string;
   beforeEach(async () => { env = makeEnv(); auth = await authHeaderFor(60001); });
