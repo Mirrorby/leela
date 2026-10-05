@@ -357,11 +357,11 @@ export function GameHome({ session, nav }: ScreenProps) {
         </div>
       </div>
 
-      <Modal open={sheet?.kind === 'peek'} onClose={closeSheet}>
+      <Modal open={sheet?.kind === 'peek'} onClose={closeSheet} ariaLabel={tr('Клетка №{0}', sheet?.cellId ?? '')}>
         {sheet?.kind === 'peek' && <CellContent cellId={sheet.cellId} cell={cellById(sheet.cellId)} />}
       </Modal>
 
-      <Modal open={sheet?.kind === 'result'} onClose={closeSheet}>
+      <Modal open={sheet?.kind === 'result'} onClose={closeSheet} ariaLabel={tr('Результат броска')}>
         {sheet?.kind === 'result' && (
           <>
             <p className="modal-move-line">{tr("Выпало:")} {sheet.rollValue}</p>

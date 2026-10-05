@@ -194,5 +194,7 @@
   "Эта партия слишком большая для ИИ-разбора. Её история сохранена, попытка не списана.": "This game is too large for an AI review. Its history is saved and no review credit was used.",
   "Нужна помощь с оплатой?": "Need help with payment?",
   "Написать автору": "Contact the creator",
-  "Поддержка Tribute": "Tribute Support"
+  "Поддержка Tribute": "Tribute Support",
+  "Диалог": "Dialog",
+  "Результат броска": "Roll result"
 }

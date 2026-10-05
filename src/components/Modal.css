@@ -1,4 +1,4 @@
-.modal-backdrop {
+.modal-backdrop.screen {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -6,7 +6,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: calc(24px + var(--safe-area-top, 0px)) calc(24px + var(--safe-area-right, 0px))
+    calc(24px + var(--safe-area-bottom, 0px)) calc(24px + var(--safe-area-left, 0px));
   box-sizing: border-box;
   z-index: 40;
   animation: modal-backdrop-in 0.18s ease-out;
@@ -25,7 +26,9 @@
   width: 100%;
   max-width: 400px;
   max-height: min(78vh, 640px);
+  max-height: min(78dvh, 640px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   /* var(--surface) вместо var(--bg-mid): в светлой теме модалка должна
      чётко отделяться от фона страницы (за ней всё ещё видна мандала и
@@ -62,13 +65,13 @@
 
 .modal-title {
   font-size: 13px;
-  color: var(--gold);
+  color: var(--gold-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding-top: 4px;
 }
 
-.modal-close {
+.modal-sheet .modal-close {
   width: 32px;
   height: 32px;
   min-width: 32px;
@@ -76,7 +79,7 @@
   border-radius: 50%;
   border: 1px solid var(--pill-border);
   background: var(--pill-bg);
-  color: var(--gold-soft);
+  color: var(--gold-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -96,8 +99,8 @@
 }
 
 .modal-body .muted {
-  color: var(--text);
-  opacity: 0.85;
+  color: var(--text-muted);
+  opacity: 1;
   font-size: 14px;
 }
 
@@ -129,5 +132,5 @@
   border-radius: 999px;
   background: var(--accent-bg);
   border: 1px solid var(--accent-border);
-  color: var(--gold-soft);
+  color: var(--gold-text);
 }
