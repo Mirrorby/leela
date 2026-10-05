@@ -50,6 +50,44 @@ describe('handleTelegramWebhook', () => {
     vi.restoreAllMocks();
   });
 
+  it.each(['ru', 'en'])('answers /paysupport in %s with verified support links and a private account ID', async (language_code) => {
+    const res = await handleTelegramWebhook(req({ update_id: 5, message: {
+      message_id: 1, chat: { id: 42 }, from: { id: 42, language_code }, text: '/paysupport@LeelaBot',
+    } }, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
+    expect(res.status).toBe(200);
+    const init = vi.mocked(globalThis.fetch).mock.calls[0][1]!;
+    const body = JSON.parse(init.body as string);
+    expect(body.text).toContain(language_code === 'ru' ? 'Помощь с оплатой Лилы' : 'Leela payment help');
+    expect(body.text).toContain('Telegram ID: 42');
+    expect(body.reply_markup.inline_keyboard).toEqual([
+      [{ text: language_code === 'ru' ? 'Написать автору' : 'Contact the creator', url: 'https://t.me/Mirrorby' }],
+      [{ text: language_code === 'ru' ? 'Поддержка Tribute' : 'Tribute Support', url: 'https://t.me/TributeSupportBot' }],
+      [{ text: language_code === 'ru' ? 'Открыть Лилу' : 'Open Leela', web_app: { url: 'https://mirrorby.github.io/leela/' } }],
+    ]);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('does not disclose an account ID in a group support response', async () => {
+    await handleTelegramWebhook(req({ update_id: 6, message: {
+      message_id: 1, chat: { id: -999 }, from: { id: 42 }, text: '/paysupport',
+    } }, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
+    const body = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1]!.body as string);
+    expect(body.text).not.toContain('Telegram ID');
+    expect(body.chat_id).toBe(-999);
+  });
+
+  it.each(['/startfoo', '/paysupportfoo'])('ignores a command prefix %s', async (text) => {
+    await handleTelegramWebhook(req({ message: { message_id: 1, chat: { id: 42 }, text } }, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized and non-object updates before any Telegram calls', async () => {
+    const db = createTestD1();
+    for (const value of [null, []]) expect((await handleTelegramWebhook(req(value, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, db)).status).toBe(400);
+    expect((await handleTelegramWebhook(req({ text: 'x'.repeat(65536) }, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, db)).status).toBe(413);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it('отвечает 401 при неверном секрете и НЕ шлёт сообщение в Telegram', async () => {
     const request = req({ update_id: 1, message: { message_id: 1, chat: { id: 42 }, text: '/start' } }, 'wrong');
     const res = await handleTelegramWebhook(request, BOT_TOKEN, WEBHOOK_SECRET, createTestD1());

@@ -1,5 +1,6 @@
 import { FREE_AI_REVIEWS_DEFAULT, FREE_GAMES_DEFAULT, getProduct, listProducts } from './catalog';
 import { ensureFreeGamePolicy } from './freeGamePolicy';
+import { ensurePaymentEvents, paymentEventStatement, flushPaymentAnalytics, reconcileTributePaymentAnalytics } from './paymentEvents';
 import type { Product } from '../types/payments';
 
 export interface TributeEnv {
@@ -150,6 +151,7 @@ function insertPurchase(db: D1Database, purchase: Purchase, mapping: Mapping, st
 
 async function grantPurchase(db: D1Database, purchase: Purchase, mapping: Mapping): Promise<boolean> {
   await ensureFreeGamePolicy(db);
+  await ensurePaymentEvents(db);
   const now = Date.now();
   const telegramId = String(purchase.telegram_user_id);
   // D1 batch executes all statements in one transaction and rolls back on failure.
@@ -169,22 +171,35 @@ async function grantPurchase(db: D1Database, purchase: Purchase, mapping: Mappin
       .bind(purchase.purchase_id, purchase.purchase_id, now, telegramId, purchase.purchase_id, telegramId),
     db.prepare("UPDATE tribute_purchases SET status = 'successful', updated_at = ? WHERE purchase_id = ? AND status = 'pending'")
       .bind(now, purchase.purchase_id),
+    paymentEventStatement(db, `payment:tribute:${purchase.purchase_id}:success`, telegramId,
+      mapping.product.grant.games === 0 && mapping.product.grant.aiReviews > 0 ? 'ai_payment_success' : 'payment_success',
+      { provider: 'tribute', purchaseId: String(purchase.purchase_id), transactionId: String(purchase.transaction_id),
+        productId: mapping.product.id, amount: purchase.amount, currency: purchase.currency,
+        grant: mapping.product.grant }, now),
   ]);
   return (results[2].meta.changes ?? 0) > 0;
 }
 
 async function refundPurchase(db: D1Database, purchase: Purchase, row: PurchaseRow | null, mapping?: Mapping): Promise<boolean> {
+  await ensurePaymentEvents(db);
   const now = Date.now();
+  const stored = row ?? { product_id: mapping!.product.id, granted_games: mapping!.product.grant.games, granted_ai_reviews: mapping!.product.grant.aiReviews };
+  const event = () => paymentEventStatement(db, `payment:tribute:${purchase.purchase_id}:refund`, String(purchase.telegram_user_id),
+    'payment_refunded', { provider: 'tribute', purchaseId: String(purchase.purchase_id), transactionId: String(purchase.transaction_id),
+      productId: stored.product_id, amount: purchase.amount, currency: purchase.currency,
+      grant: { games: stored.granted_games, aiReviews: stored.granted_ai_reviews }, accessAdjustment: 'reconciled' }, now);
   if (!row) {
     // A refund may arrive before the purchase notification. This tombstone stops
     // a delayed purchase from granting access after the money was returned.
     const results = await db.batch([
       insertPurchase(db, purchase, mapping!, 'refunded', now),
+      event(),
       ...refundStatements(db, purchase, now),
+      event(),
     ]);
-    return (results[0].meta.changes ?? 0) > 0 || (results[2].meta.changes ?? 0) > 0;
+    return (results[0].meta.changes ?? 0) > 0 || (results[3].meta.changes ?? 0) > 0;
   }
-  const results = await db.batch(refundStatements(db, purchase, now));
+  const results = await db.batch([...refundStatements(db, purchase, now), event()]);
   return (results[1].meta.changes ?? 0) > 0;
 }
 
@@ -244,6 +259,7 @@ export async function handleTributeWebhook(request: Request, env: TributeEnv): P
     if (!purchase) return reject('invalid_purchase', 400, 'purchase_fields');
     if (row && !matches(row, purchase)) return reply({ error: 'purchase_mismatch' }, 409);
     if (row && (row.status === 'refunded' || (row.status === 'successful' && event.name === 'new_digital_product'))) {
+      await reconcileTributePaymentAnalytics(env.DB);
       return reply({ status: 'ok', duplicate: true });
     }
     if (!row && mapping && (mapping.amount !== purchase.amount || mapping.currency !== purchase.currency)) {
@@ -252,6 +268,7 @@ export async function handleTributeWebhook(request: Request, env: TributeEnv): P
     const applied = event.name === 'digital_product_refunded'
       ? await refundPurchase(env.DB, purchase, row, mapping)
       : await grantPurchase(env.DB, purchase, mapping!);
+    await flushPaymentAnalytics(env.DB);
     return reply({ status: 'ok', duplicate: !applied });
   } catch {
     // Non-2xx makes Tribute retry. Never acknowledge a failed DB operation.

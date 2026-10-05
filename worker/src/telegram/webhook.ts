@@ -14,6 +14,9 @@ import {
   applySuccessfulPayment,
   markSubscriptionAutoRenewOff,
 } from '../payments/repository';
+import support from '../../../src/data/paymentSupport.json';
+import { readBoundedText, BodyTooLargeError } from '../http/limits';
+import { applyLegacyRefund, hasLegacyRefund, type LegacyRefund } from '../payments/legacyRefunds';
 import { logAnalyticsEvent } from '../analytics/repository';
 
 const TELEGRAM_SECRET_HEADER = 'X-Telegram-Bot-Api-Secret-Token';
@@ -22,9 +25,10 @@ const MINI_APP_URL = 'https://mirrorby.github.io/leela/';
 export interface TelegramMessage {
   message_id: number;
   chat: { id: number };
-  from?: { id: number; first_name?: string };
+  from?: { id: number; first_name?: string; language_code?: string };
   text?: string;
   successful_payment?: TelegramSuccessfulPayment;
+  refunded_payment?: LegacyRefund;
 }
 
 /** Поля подтверждены официальным Bot API changelog (Bot API 8.0, 17 ноября
@@ -50,23 +54,14 @@ export interface TelegramPreCheckoutQuery {
   invoice_payload: string;
 }
 
-/**
- * Update.subscription (BotSubscriptionUpdated, Bot API 10.2, добавлено
- * 14 июля 2026) — единственное место во всей интеграции, где официальную
- * секцию с полным списком полей достать не удалось (страница
- * core.telegram.org/bots/api#botsubscriptionupdated при разработке
- * возвращала только начало документа, не сам раздел). Подтверждено только
- * через сторонние обёртки API: есть строковое поле state, одно из значений
- * — 'canceled'. Реагируем МАКСИМАЛЬНО защищённо — только на этот конкретный
- * случай, любые другие/неизвестные состояния просто игнорируем, ничего не
- * трогая (см. markSubscriptionAutoRenewOff — эта ветка обновляет только
- * auto_renew, НИКОГДА не сокращает сам оплаченный период). Если это место
- * поведёт себя не так — первое, что проверить: реальную форму объекта
- * (см. ссылку выше в актуальной документации).
- */
+/** Historical subscription cancellation notification. The Bot API documents
+ * user, invoice_payload and state (active/canceled/failed). Stars renewals
+ * are retired; cancellation changes only auto_renew, never paid access.
+ * https://core.telegram.org/bots/api#botsubscriptionupdated */
 export interface TelegramSubscriptionUpdate {
   user?: { id: number };
   state?: string;
+  invoice_payload?: string;
 }
 
 export interface TelegramUpdate {
@@ -96,6 +91,7 @@ async function answerPreCheckoutQuery(botToken: string, preCheckoutQueryId: stri
   await fetch(`https://api.telegram.org/bot${botToken}/answerPreCheckoutQuery`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(8000),
     body: JSON.stringify({ pre_checkout_query_id: preCheckoutQueryId, ok, error_message: errorMessage }),
   });
 }
@@ -118,6 +114,7 @@ async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage)
   // Идемпотентность (§14 ТЗ) — Telegram может доставить этот update
   // повторно (сетевой ретрай на его стороне); если этот charge_id уже
   // записан, доступ уже начислен, повторно начислять НЕЛЬЗЯ.
+  if (await hasLegacyRefund(db, payment.telegram_payment_charge_id)) return;
   const existing = await findTransactionByChargeId(db, payment.telegram_payment_charge_id);
   if (existing) return;
 
@@ -128,12 +125,17 @@ async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage)
     throw new Error(`successful_payment: транзакция ${payment.invoice_payload} не найдена`);
   }
 
+  if (payment.currency !== 'XTR' || payment.total_amount !== transaction.stars_amount
+    || transaction.telegram_id !== String(message.chat.id) || transaction.telegram_id !== String(message.from.id)) {
+    throw new Error('successful_payment: invoice identity mismatch');
+  }
   const isRenewal = payment.is_recurring === true && payment.is_first_recurring !== true;
-  await applySuccessfulPayment(db, transaction, {
+  const applied = await applySuccessfulPayment(db, transaction, {
     telegramPaymentChargeId: payment.telegram_payment_charge_id,
     isRenewal,
     subscriptionExpirationDateSeconds: payment.subscription_expiration_date,
   });
+  if (!applied) return;
 
   // §26 ТЗ: "для событий покупки сохранять тип продукта". Подписка (первая
   // оплата/продление) и ai_review_1 логируются отдельными событиями вместо
@@ -151,8 +153,6 @@ async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage)
   }
 }
 
-/** См. TelegramSubscriptionUpdate выше — единственная неуверенная часть
- * интеграции, обработка предельно защищённая и не влияющая на сам доступ. */
 async function handleSubscriptionUpdate(db: D1Database, update: TelegramSubscriptionUpdate): Promise<void> {
   if (update.state !== 'canceled' || !update.user) return;
   await markSubscriptionAutoRenewOff(db, String(update.user.id));
@@ -168,6 +168,7 @@ async function sendTelegramMessage(
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(8000),
     body: JSON.stringify({
       chat_id: chatId,
       text,
@@ -180,28 +181,36 @@ async function sendTelegramMessage(
   // повторять доставку этого апдейта.
 }
 
-const WELCOME_TEXT =
-  'Лила — доска трансформации. Брось кубик, пройди путь фишки от рождения до финиша ' +
-  'и загляни в смысл каждой клетки, на которой останавливаешься.\n\n' +
-  'Открой приложение кнопкой ниже (или через меню бота), чтобы начать партию.';
+function russian(message: TelegramMessage): boolean { return /^ru(?:[-_]|$)/i.test(message.from?.language_code ?? 'en'); }
 
 async function handleStartCommand(botToken: string, message: TelegramMessage): Promise<void> {
-  await sendTelegramMessage(botToken, message.chat.id, WELCOME_TEXT, {
-    inline_keyboard: [[{ text: 'Открыть Лилу', web_app: { url: MINI_APP_URL } }]],
+  const ru = russian(message);
+  const welcome = ru
+    ? 'Лила — доска трансформации. Брось кубик, пройди путь фишки от рождения до финиша и загляни в смысл каждой клетки.\n\nОткрой приложение кнопкой ниже. Помощь с оплатой: /paysupport.'
+    : 'Leela is a game of self-discovery. Roll the die, follow your journey from birth to the finish and explore the meaning of each square.\n\nOpen the app below. Payment help: /paysupport.';
+  await sendTelegramMessage(botToken, message.chat.id, welcome, {
+    inline_keyboard: [[{ text: ru ? 'Открыть Лилу' : 'Open Leela', web_app: { url: MINI_APP_URL } }]],
   });
 }
 
-/**
- * Всегда возвращает 200, если секрет верный, — ЗА ИСКЛЮЧЕНИЕМ обработки
- * successful_payment (см. handleSuccessfulPayment выше): это единственная
- * ветка, где сбой должен дать Telegram повод повторить доставку, потому что
- * деньги уже получены и просто "забыть" про них нельзя. Остальные типы
- * апдейтов (в т.ч. pre_checkout_query и subscription) — как и раньше,
- * ошибка внутри них не должна ронять ответ на весь вебхук не-200:
- * Telegram ретраит доставку, если вебхук ответил ошибкой; отвечать не-200
- * стоит ТОЛЬКО на реальный сбой, который стоит повторить, а не на "мы
- * просто не обрабатываем такой апдейт" или на некритичный сбой.
- */
+async function handlePaySupport(botToken: string, message: TelegramMessage): Promise<void> {
+  const ru = russian(message);
+  let text = ru
+    ? 'Помощь с оплатой Лилы\n\nЕсли оплата прошла, а партии или разборы не появились: вернись в игру, нажми «Обновить баланс после оплаты» и проверь, что в Tribute выбран тот же Telegram-аккаунт. Если это не помогло, напиши автору по кнопке ниже.\n\nУкажи ID покупки из чека Tribute, товар, дату, сумму и валюту. Для старой оплаты в Telegram можно приложить чек. Не отправляй полный номер карты или коды подтверждения.\n\nПо вопросам списания денег или возврата в Tribute обратись в поддержку Tribute. Возврат требует проверки покупки.'
+    : 'Leela payment help\n\nIf payment succeeded but games or reviews have not appeared: return to the game, tap “Refresh balance after payment” and check that Tribute uses the same Telegram account. If this does not help, contact the creator below.\n\nInclude the purchase ID from your Tribute receipt, product, date, amount and currency. For an older Telegram payment, include its receipt. Do not send your full card number or verification codes.\n\nFor charges or refunds through Tribute, contact Tribute Support. Refunds require verification of the purchase.';
+  // Account identifiers belong only in a private reply, never a group chat.
+  if (message.from && message.chat.id === message.from.id) text += ru
+    ? `\n\nТвой Telegram ID: ${message.from.id}` : `\n\nYour Telegram ID: ${message.from.id}`;
+  await sendTelegramMessage(botToken, message.chat.id, text, { inline_keyboard: [
+    [{ text: ru ? 'Написать автору' : 'Contact the creator', url: support.authorUrl }],
+    [{ text: ru ? 'Поддержка Tribute' : 'Tribute Support', url: support.tributeUrl }],
+    [{ text: ru ? 'Открыть Лилу' : 'Open Leela', web_app: { url: MINI_APP_URL } }],
+  ] });
+}
+
+/** Financial notifications must commit before acknowledgement: database
+ * failures propagate so Telegram retries. Command delivery is best effort;
+ * malformed/oversized requests are rejected before processing. */
 export async function handleTelegramWebhook(
   request: Request,
   botToken: string,
@@ -214,15 +223,19 @@ export async function handleTelegramWebhook(
 
   let update: TelegramUpdate;
   try {
-    update = (await request.json()) as TelegramUpdate;
-  } catch {
+    update = JSON.parse(await readBoundedText(request, 64 * 1024)) as TelegramUpdate;
+    if (!update || typeof update !== 'object' || Array.isArray(update)) throw new Error('invalid update');
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return Response.json({ error: 'body_too_large' }, { status: 413 });
     return Response.json({ error: 'invalid_body' }, { status: 400 });
   }
 
-  const text = update.message?.text?.trim();
-  if (update.message && text?.startsWith('/start')) {
+  const text = typeof update.message?.text === 'string' ? update.message.text.trim() : '';
+  const command = /^\/(start|paysupport)(?:@[a-zA-Z0-9_]+)?(?:\s|$)/i.exec(text)?.[1].toLowerCase();
+  if (update.message && command) {
     try {
-      await handleStartCommand(botToken, update.message);
+      if (command === 'paysupport') await handlePaySupport(botToken, update.message);
+      else await handleStartCommand(botToken, update.message);
     } catch {
       // Отправка сообщения обратно в Telegram может не удаться (сеть,
       // пользователь заблокировал бота и т.п.) — это НЕ повод ответить
@@ -242,6 +255,13 @@ export async function handleTelegramWebhook(
       // платёж по таймауту (не получив ответ за 10с), пользователь
       // попробует снова.
     }
+  }
+
+  if (update.message?.refunded_payment) {
+    // Durable reconciliation or review must precede acknowledging a refund.
+    const owner = update.message.chat.id;
+    if (!Number.isSafeInteger(owner) || owner <= 0) throw new Error('legacy refund requires a private payment chat');
+    await applyLegacyRefund(db, String(owner), update.message.refunded_payment);
   }
 
   if (update.message?.successful_payment) {

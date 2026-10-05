@@ -20,6 +20,7 @@ on:
       # дожидаясь повторного наступления.
       - "src/data/content/**"
       - "src/data/limits.json"
+      - "src/data/paymentSupport.json"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch: {}
 

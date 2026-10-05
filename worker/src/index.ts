@@ -6,6 +6,7 @@ import { handleTelegramWebhook } from './telegram/webhook';
 import { updateGame, getGameById, getGameByClientRequestId, createGameWithCharge, listGamesByUser, InvalidCursorError } from './games/repository';
 import { getEntitlements, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError } from './payments/repository';
 import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './payments/tribute';
+import { reconcileTributePaymentAnalytics } from './payments/paymentEvents';
 import { retireStarsRenewals } from './payments/retireStars';
 import { getRecoverableAiReview, reserveAiReview, markAiReviewReady, failAiReviewAndRefund, recoverExpiredAiReviews } from './ai/reviewRepository';
 import { publicAiReview, type ReviewKind, type ReviewLanguage } from './ai/reviewFormat';
@@ -186,25 +187,35 @@ async function handleGetEntitlements(env: Env, auth: ValidatedInitData): Promise
   return json(entitlements);
 }
 
-/**
- * §26 ТЗ: единственное событие из списка без серверного сигнала вообще —
- * ai_offer_shown (момент показа экрана "Получить ИИ-разбор" на Summary,
- * см. batch 6 фронтенда) — это чистый просмотр UI, ни один API-запрос сам
- * по себе с ним не совпадает. Остальные 16 событий из §26 логируются на
- * естественных серверных точках (см. handleCreateGame/
- * handleStartAiReview/webhook.ts) без отдельного эндпоинта — специально НЕ
- * делаю его общим "любое событие с фронта", узкий allowlist на одно
- * конкретное значение достаточен и не даёт клиенту засорить таблицу
- * произвольными строками.
- */
+/** Client actions are distinct from authoritative payment confirmations. */
 async function handleLogClientEvent(request: Request, env: Env, auth: ValidatedInitData): Promise<Response> {
-  const body = await readJson<{ event?: unknown }>(request);
-  if (body?.event !== 'ai_offer_shown') {
-    return json({ error: 'invalid_body', detail: 'event must be one of: ai_offer_shown' }, { status: 400 });
+  const body = await readJson<{ event?: unknown; productId?: unknown; clientEventId?: unknown }>(request);
+  if (body?.event !== 'ai_offer_shown' && body?.event !== 'tribute_checkout_clicked') {
+    return json({ error: 'invalid_body', detail: 'unsupported client event' }, { status: 400 });
   }
-  const retryAfter = await consumeRateLimit(env.DB, auth.telegramId, 'analytics');
-  if (retryAfter !== null) return rateLimited(retryAfter);
-  await logAnalyticsEvent(env.DB, auth.telegramId, 'ai_offer_shown');
+  if (body.event === 'ai_offer_shown') {
+    const retryAfter = await consumeRateLimit(env.DB, auth.telegramId, 'analytics');
+    if (retryAfter !== null) return rateLimited(retryAfter);
+    await logAnalyticsEvent(env.DB, auth.telegramId, 'ai_offer_shown');
+  } else {
+    if (!isValidIdentifier(body.clientEventId)) return json({ error: 'invalid_identifier' }, { status: 400 });
+    const product = listProductsWithTribute(env).find(p => p.id === body.productId);
+    if (!product?.tribute) return json({ error: 'invalid_product' }, { status: 400 });
+    const retryAfter = await consumeRateLimit(env.DB, auth.telegramId, 'analytics');
+    if (retryAfter !== null) return rateLimited(retryAfter);
+    const payload = JSON.stringify({ provider: 'tribute', productId: product.id,
+      amount: product.tribute.amount, currency: product.tribute.currency });
+    const now = Date.now();
+    try {
+      await env.DB.batch(['product_selected', 'checkout_clicked'].map(event => env.DB.prepare(
+        `INSERT INTO analytics_events (id, telegram_id, event, payload, created_at)
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`)
+        .bind(`checkout:${auth.telegramId}:${body.clientEventId}:${event}`, auth.telegramId, event, payload, now)));
+    } catch {
+      // Observational clicks never grant access or prevent opening checkout.
+      return json({ error: 'analytics_unavailable' }, { status: 503 });
+    }
+  }
   return json({ ok: true });
 }
 
@@ -542,6 +553,7 @@ export default {
     }
   },
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    await reconcileTributePaymentAnalytics(env.DB);
     // Recover credits even when there is no client left to poll the review.
     await recoverExpiredAiReviews(env.DB);
     await retireStarsRenewals(env.DB, env.BOT_TOKEN);
