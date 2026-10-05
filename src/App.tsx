@@ -85,8 +85,7 @@ function App() {
   const nav: NavigationActions = { push, replace, pop, resetTo };
   const current = stack[stack.length - 1];
 
-  // Системная кнопка "назад" Telegram зеркалит тот же pop(), что и обычная
-  // навигация в приложении — видна ровно когда есть куда возвращаться.
+  // Telegram Back closes the top dialog first, then pops the screen stack.
   useTelegramBackButton(stack.length > 1, pop);
 
   // Persist progress and roll hints while keeping navigation-only screens

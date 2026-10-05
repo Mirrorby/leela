@@ -1,31 +1,29 @@
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
+import { closeTopDialog, hasOpenDialogs, subscribeDialogs } from '../navigation/dialogStack';
 import { getWebApp, isTelegramEnvironment } from './telegramAdapter';
 
-/**
- * Показывает системную кнопку "назад" Telegram, когда есть куда возвращаться
- * (стек глубже одного экрана), и вызывает по нажатию тот же onBack, что и
- * обычный UI-back в приложении — один источник правды (App.tsx.pop()), два
- * триггера (свой UI-back + системная кнопка Telegram).
- * Вне Telegram — no-op.
- */
+/** Telegram Back closes the top dialog before navigating. A dialog makes
+ * Back visible even on a root screen. Outside Telegram this is a no-op. */
 export function useTelegramBackButton(visible: boolean, onBack: () => void): void {
+  const dialogOpen = useSyncExternalStore(subscribeDialogs, hasOpenDialogs, () => false);
   useEffect(() => {
     if (!isTelegramEnvironment()) return;
     const webApp = getWebApp();
     if (!webApp) return;
 
     const backButton = webApp.BackButton;
-    if (visible) {
+    if (visible || dialogOpen) {
       backButton.show();
     } else {
       backButton.hide();
     }
 
-    backButton.onClick(onBack);
+    const handleBack = () => { if (!closeTopDialog()) onBack(); };
+    backButton.onClick(handleBack);
     return () => {
-      backButton.offClick(onBack);
+      backButton.offClick(handleBack);
     };
-  }, [visible, onBack]);
+  }, [visible, dialogOpen, onBack]);
 
   // На размонтирование всего приложения (в SPA практически никогда, но на
   // всякий случай) прячем кнопку, чтобы не оставлять её "подвисшей".
