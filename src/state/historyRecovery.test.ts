@@ -83,6 +83,37 @@ describe('verified account history recovery', () => {
     cached();
     await expect(loadHistoryPage({}, () => true, async () => { throw new WorkerApiError('auth', 401, null); })).rejects.toMatchObject({ status: 401 });
   });
+  it('can explicitly reveal historically hidden games for server deletion', async () => {
+    cached(); hideGameId('g1');
+    const list = async () => ({games:[makeGame()],nextCursor:null});
+    expect((await loadHistoryPage({}, () => true, list)).entries).toEqual([]);
+    expect((await loadHistoryPage({includeHidden:true}, () => true, list)).entries.map(row => row.id)).toEqual(['g1']);
+    const offline = async () => { throw new WorkerApiError('offline',0,null); };
+    expect((await loadHistoryPage({includeHidden:true}, () => true, offline)).entries.map(row => row.id)).toEqual(['g1']);
+  });
+  it('removes a cache missing from a complete online history so it cannot reappear offline', async () => {
+    cached();
+    await loadHistoryPage({}, () => true, async () => ({games:[],nextCursor:null}));
+    expect(loadPersistedGame('g1')).toBeNull(); expect(getActivePersistedGameId()).toBeNull();
+    const offline = await loadHistoryPage({}, () => true, async () => { throw new WorkerApiError('offline',0,null); });
+    expect(offline.entries).toEqual([]);
+  });
+  it('does not erase a new or changed cache saved while the server list was in flight', async () => {
+    cached();
+    const response = deferred<{games:ReturnType<typeof makeGame>[];nextCursor:null}>();
+    const loading = loadHistoryPage({}, () => true, () => response.promise);
+    persistGame(makeSnapshot(makeGame({currentCell:7})));
+    persistGame(makeSnapshot(makeGame({id:'g2'})));
+    response.resolve({games:[],nextCursor:null}); await loading;
+    expect(loadPersistedGame('g1')?.game.currentCell).toBe(7);
+    expect(loadPersistedGame('g2')).not.toBeNull();
+  });
+  it('keeps cached games absent from a partial first page or cursor page', async () => {
+    cached();
+    await loadHistoryPage({}, () => true, async () => ({games:[makeGame({id:'g2'})],nextCursor:'next'}));
+    await loadHistoryPage({cursor:'next'}, () => true, async () => ({games:[],nextCursor:null}));
+    expect(loadPersistedGame('g1')).not.toBeNull(); expect(getActivePersistedGameId()).toBe('g1');
+  });
   it('does not resurrect hidden rows or cache responses after account switching', async () => {
     const page = deferred<{ games: ReturnType<typeof makeGame>[]; nextCursor: null }>();
     const pending = loadHistoryPage({}, () => true, () => page.promise);

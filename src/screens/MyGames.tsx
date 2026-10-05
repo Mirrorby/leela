@@ -8,6 +8,7 @@ import { SessionSupersededError } from '../state/gameSessionController';
 import { Modal } from '../components/Modal';
 import { deleteGameAndCache } from '../state/deleteGame';
 import { setStorageOwner } from '../storage/localStorage';
+import { getHiddenPersistedGameIds } from '../state/persistence';
 import { gameResumeScreen } from '../state/resolveGameScreen';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -32,6 +33,7 @@ const PAGE_SIZE = 20;
  * незавершённой партии или итог завершённой, независимо от меню в кэше.
  */
 export function MyGames({ session, nav }: ScreenProps) {
+  const [includeHidden, setIncludeHidden] = useState(false);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -64,7 +66,7 @@ export function MyGames({ session, nav }: ScreenProps) {
     setLoadingMore(false);
     loadingMoreRef.current = false;
     setListError(null);
-    loadHistoryPage({ limit: PAGE_SIZE }, () => generationRef.current === generation)
+    loadHistoryPage({ limit: PAGE_SIZE, includeHidden }, () => generationRef.current === generation)
       .then((page) => {
         if (generationRef.current !== generation) return;
         setEntries(page.entries);
@@ -79,7 +81,7 @@ export function MyGames({ session, nav }: ScreenProps) {
         setListError(error instanceof WorkerApiError ? error.message : tr("Не удалось загрузить партии — попробуйте ещё раз."));
       })
       .finally(() => { if (generationRef.current === generation) setLoading(false); });
-  }, [accessDenied]);
+  }, [accessDenied, includeHidden]);
 
   useEffect(() => {
     loadFirstPage();
@@ -92,7 +94,7 @@ export function MyGames({ session, nav }: ScreenProps) {
     setLoadingMore(true);
     setListError(null);
     const generation = generationRef.current;
-    loadHistoryPage({ limit: PAGE_SIZE, cursor: nextCursor }, () => generationRef.current === generation)
+    loadHistoryPage({ limit: PAGE_SIZE, cursor: nextCursor, includeHidden }, () => generationRef.current === generation)
       .then((page) => {
         if (generationRef.current !== generation) return;
         setEntries((prev) => {
@@ -170,6 +172,12 @@ export function MyGames({ session, nav }: ScreenProps) {
       {offline && <p className="muted screen-notice">{tr("Нет связи с сервером — показаны партии, сохранённые на этом устройстве.")}</p>}
       {loading && entries.length === 0 && <p className="muted">{tr("Загрузка…")}</p>}
       {!loading && !listError && entries.length === 0 && <p className="muted">{tr("Сохранённых партий пока нет.")}</p>}
+      {getHiddenPersistedGameIds().length > 0 && (
+        <button onClick={() => setIncludeHidden(value => !value)} disabled={loading || loadingMore || openingId !== null || deleting}>
+          {includeHidden ? tr("Не показывать ранее скрытые партии") : tr("Показать ранее скрытые партии")}
+        </button>
+      )}
+      {includeHidden && <p className="muted">{tr("Раньше удаление только скрывало партию на устройстве. Теперь эти партии можно открыть и удалить с сервера.")}</p>}
       <ul className="game-list">
         {entries.map((entry) => (
           <li key={entry.id} className="game-list-item">

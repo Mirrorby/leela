@@ -206,5 +206,8 @@
   "Удаление в Лиле не удаляет данные, уже переданные Gemini. На других устройствах список обновится при подключении к серверу.": "Deleting a game in Leela does not delete data already sent to Gemini. Other devices will update their lists when they connect to the server.",
   "Удаляем…": "Deleting…",
   "Удалить партию": "Delete game",
-  "Для ИИ-разбора ваше намерение и путь партии передаются Google Gemini. Нажимая кнопку получения или повтора разбора, вы соглашаетесь с этой передачей. Не включайте в намерение данные, которыми не хотите делиться. Играть можно без ИИ-разбора.": "To create an AI review, your intention and game path are sent to Google Gemini. By requesting or retrying a review, you agree to this transfer. Do not include information you do not want to share. You can play without an AI review."
+  "Для ИИ-разбора ваше намерение и путь партии передаются Google Gemini. Нажимая кнопку получения или повтора разбора, вы соглашаетесь с этой передачей. Не включайте в намерение данные, которыми не хотите делиться. Играть можно без ИИ-разбора.": "To create an AI review, your intention and game path are sent to Google Gemini. By requesting or retrying a review, you agree to this transfer. Do not include information you do not want to share. You can play without an AI review.",
+  "Не показывать ранее скрытые партии": "Hide previously hidden games",
+  "Показать ранее скрытые партии": "Show previously hidden games",
+  "Раньше удаление только скрывало партию на устройстве. Теперь эти партии можно открыть и удалить с сервера.": "Previously, deletion only hid a game on this device. You can now open these games and delete them from the server."
 }
