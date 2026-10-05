@@ -1,0 +1,62 @@
+name: Reusable checks
+
+on:
+  workflow_call:
+    inputs:
+      upload-pages:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend tests, lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        if: inputs.upload-pages && github.ref == 'refs/heads/main'
+        with:
+          path: dist
+
+  worker:
+    name: Worker tests, types, migrations and bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      # The existing lock is maintained with npm 12; Node 24 satisfies its engines.
+      - run: npm install -g npm@12
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:migrations
+      - name: Check all SQL migrations with native local D1
+        run: npx wrangler d1 migrations apply leela --local --persist-to .wrangler/migration-check
+      - name: Apply migrations to a fresh local D1 database
+        run: npm run migrate:local
+      - name: Verify repeat application
+        run: npm run migrate:local
+      - run: npm run build

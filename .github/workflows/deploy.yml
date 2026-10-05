@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Verify and deploy
 
 on:
   push:
@@ -7,34 +7,48 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
+  checks:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/checks.yml
+    with:
+      upload-pages: true
 
-  deploy:
-    needs: build
+  worker:
+    needs: checks
+    uses: ./.github/workflows/deploy-worker.yml
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+  pages:
+    needs: [checks, worker]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+      - name: Check current main before publishing
+        id: current
+        shell: bash
+        run: |
+          git fetch --no-tags origin main
+          if [ "$GITHUB_SHA" = "$(git rev-parse origin/main)" ]; then
+            echo 'latest=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'latest=false' >> "$GITHUB_OUTPUT"
+            echo 'Skipping an obsolete release.'
+          fi
       - id: deployment
+        if: steps.current.outputs.latest == 'true'
         uses: actions/deploy-pages@v4
