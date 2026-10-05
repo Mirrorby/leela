@@ -1,3 +1,4 @@
+import { deleteOwnedGame, wasCreationDeleted, GameDeletedError } from './games/deletion';
 import { createNewGame, processRoll, canRoll, findRollByClientEventId } from './game/gameEngine';
 import { isValidDiceValue, rollVirtualDice } from './game/diceEngine';
 import { getRuleset } from './game/rulesetLoader';
@@ -38,7 +39,7 @@ const CORS_HEADERS: Record<string, string> = {
   // (initData), а не через cookie, так что ограничение Origin не даёт
   // дополнительной защиты — только усложняет вызовы из github.dev/Mini App.
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Expose-Headers': 'Retry-After',
 };
@@ -111,6 +112,8 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
     return json({ game: existing });
   }
 
+  if (await wasCreationDeleted(env.DB, auth.telegramId, clientRequestId)) return json({ error: 'game_deleted' }, { status: 410 });
+
   if (body.request.length > limits.requestCharacters) {
     return json({ error: 'request_too_long', maxCharacters: limits.requestCharacters }, { status: 400 });
   }
@@ -130,6 +133,7 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
     if (created.created && created.source) await logAnalyticsEvent(env.DB, auth.telegramId, `${created.source}_game_started`);
     return json({ game: created.game }, { status: created.created ? 201 : 200 });
   } catch (err) {
+    if (err instanceof GameDeletedError) return json({ error: 'game_deleted' }, { status: 410 });
     if (err instanceof InsufficientBalanceError) {
       await logAnalyticsEvent(env.DB, auth.telegramId, 'paywall_opened');
       return json({ error: 'games_limit_reached', detail: 'Бесплатные и купленные партии закончились.',
@@ -286,6 +290,7 @@ async function handleStartAiReview(request: Request, env: Env, ctx: ExecutionCon
     reservation = await reserveAiReview(env.DB, gameId, auth.telegramId, kind, language);
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
+      if (!await getGameById(env.DB, gameId, auth.telegramId)) return json({ error: 'not_found' }, { status: 404 });
       return json({
         error: 'analysis_locked',
         detail: kind === 'full' ? 'Для полного разбора нужен купленный кредит.' : 'Бесплатный краткий разбор уже использован.',
@@ -469,6 +474,10 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
     const singleMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)$/);
     if (singleMatch) {
       if (request.method === 'GET') return handleGetGame(env, auth, singleMatch[1]);
+      if (request.method === 'DELETE') {
+        const deleted = await deleteOwnedGame(env.DB, singleMatch[1], auth.telegramId);
+        return deleted ? json(deleted) : json({ error: 'not_found' }, { status: 404 });
+      }
       return json({ error: 'method_not_allowed' }, { status: 405 });
     }
 

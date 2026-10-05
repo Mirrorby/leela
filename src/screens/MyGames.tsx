@@ -5,12 +5,9 @@ import type { ScreenProps } from '../navigation/ScreenProps';
 import { WorkerApiError } from '../api/workerClient';
 import { loadHistoryPage, type HistoryEntry } from '../state/historyRecovery';
 import { SessionSupersededError } from '../state/gameSessionController';
+import { Modal } from '../components/Modal';
+import { deleteGameAndCache } from '../state/deleteGame';
 import { setStorageOwner } from '../storage/localStorage';
-import {
-  removePersistedGame,
-  setActivePersistedGameId,
-  hidePersistedGame,
-} from '../state/persistence';
 import { gameResumeScreen } from '../state/resolveGameScreen';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,6 +39,10 @@ export function MyGames({ session, nav }: ScreenProps) {
   const [offline, setOffline] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
+  const [deleteEntry, setDeleteEntry] = useState<HistoryEntry | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deletingRef = useRef(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const generationRef = useRef(0);
   const loadingMoreRef = useRef(false);
@@ -113,7 +114,7 @@ export function MyGames({ session, nav }: ScreenProps) {
   };
 
   const handleContinue = async (entry: HistoryEntry) => {
-    if (openingId || session.isBusy) return;
+    if (openingId || session.isBusy || deletingRef.current) return;
     const generation = generationRef.current;
     setOpeningId(entry.id);
     setListError(null);
@@ -130,27 +131,27 @@ export function MyGames({ session, nav }: ScreenProps) {
     }
   };
 
-  const handleDelete = (entry: HistoryEntry) => {
-    const isActive = session.game?.id === entry.id;
-    // Честная формулировка (правка после ревью): сервер не поддерживает
-    // удаление партии (DELETE /api/v1/games/:id не существует, запись
-    // остаётся в D1) — раньше диалог обещал "без возможности восстановить",
-    // что было неверно уже тогда (просто раньше это было не так заметно,
-    // пока список читался только локально). "Удалить" здесь — скрыть на
-    // этом устройстве.
-    const confirmed = window.confirm(
-      isActive
-        ? tr("Скрыть текущую партию из этого списка на этом устройстве? Сама партия останется сохранённой на сервере.")
-        : tr("Скрыть эту партию из списка на этом устройстве? Сама партия останется сохранённой на сервере.")
-    );
-    if (!confirmed) return;
-
-    hidePersistedGame(entry.id);
-    removePersistedGame(entry.id);
-    setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-    if (isActive) {
-      setActivePersistedGameId(null);
-      session.reset();
+  const handleDelete = async () => {
+    if (!deleteEntry || deletingRef.current || session.isBusy) return;
+    const entry = deleteEntry;
+    deletingRef.current = true;
+    setDeleting(true);
+    setDeleteError(null);
+    cancelPending();
+    const generation = ++generationRef.current;
+    try {
+      await deleteGameAndCache(entry.id);
+      if (session.getSnapshot().game?.id === entry.id) session.reset();
+      if (generationRef.current !== generation) return;
+      setEntries((prev) => prev.filter((item) => item.id !== entry.id));
+      setDeleteEntry(null);
+    } catch (error) {
+      if (generationRef.current !== generation || error instanceof SessionSupersededError) return;
+      accessDenied(error);
+      setDeleteError(error instanceof WorkerApiError ? error.message : tr("Не удалось удалить партию. Проверьте соединение и повторите."));
+    } finally {
+      deletingRef.current = false;
+      if (generationRef.current === generation) setDeleting(false);
     }
   };
 
@@ -179,28 +180,36 @@ export function MyGames({ session, nav }: ScreenProps) {
               </div>
             </div>
             <div className="game-list-actions">
-              <button onClick={() => { void handleContinue(entry); }} disabled={openingId !== null || session.isBusy}>
+              <button onClick={() => { void handleContinue(entry); }} disabled={openingId !== null || session.isBusy || deleting}>
                 {openingId === entry.id ? tr("Открываем…") : tr("Продолжить")}
               </button>
-              <button className="danger" onClick={() => handleDelete(entry)} disabled={openingId !== null}>{tr("Удалить")} </button>
+              <button className="danger" onClick={() => { setDeleteEntry(entry); setDeleteError(null); }} disabled={openingId !== null || session.isBusy || loading || loadingMore || deleting}>{tr("Удалить")} </button>
             </div>
           </li>
         ))}
       </ul>
       {listError && <p className="screen-error">{listError}</p>}
-      <button onClick={loadFirstPage} disabled={loading || openingId !== null}>
+      <button onClick={loadFirstPage} disabled={loading || openingId !== null || deleting}>
         {loading ? tr("Обновляем…") : tr("Обновить список")}
       </button>
       {nextCursor && !offline && (
-        <button onClick={loadMore} disabled={loadingMore}>
+        <button onClick={loadMore} disabled={loadingMore || deleting}>
           {loadingMore ? tr("Загрузка…") : tr("Загрузить ещё")}
         </button>
       )}
-      <button onClick={handleNewGame}>{tr("Новая партия")}</button>
+      <button onClick={handleNewGame} disabled={deleting}>{tr("Новая партия")}</button>
       {/* Батч 6 монетизации: единственная точка входа на экран "Ваш доступ"
           (§24 ТЗ) — MyGames уже служит своего рода аккаунт-хабом, отдельная
           иконка в topbar GameHome ради этого не заводилась. */}
       <button onClick={() => nav.push('YourAccess')}>{tr("Ваш доступ")}</button>
+      <Modal open={deleteEntry !== null} title={tr("Удалить партию?")} onClose={deleting ? undefined : () => setDeleteEntry(null)}>
+        <p>{tr("Намерение, ходы и ИИ-разборы этой партии будут удалены с сервера. Восстановить их нельзя.")}</p>
+        <p className="muted">{tr("Сыгранная партия и готовый разбор не возвращаются на баланс. Если разбор ещё создаётся, его кредит вернётся. Покупки и баланс сохраняются.")}</p>
+        <p className="muted">{tr("Удаление в Лиле не удаляет данные, уже переданные Gemini. На других устройствах список обновится при подключении к серверу.")}</p>
+        {deleteError && <p className="screen-error" role="alert">{deleteError}</p>}
+        <button onClick={() => setDeleteEntry(null)} disabled={deleting}>{tr("Отмена")}</button>
+        <button className="danger" onClick={() => { void handleDelete(); }} disabled={deleting}>{deleting ? tr("Удаляем…") : tr("Удалить партию")}</button>
+      </Modal>
       <button onClick={() => nav.pop()}>{tr("Назад")}</button>
     </div>
   );

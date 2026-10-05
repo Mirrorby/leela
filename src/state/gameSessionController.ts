@@ -115,7 +115,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         return game;
       } catch (error) {
         requireCurrent(operation);
-        if (request && error instanceof WorkerApiError && [400, 402, 413].includes(error.status)) clearPendingOperation(request);
+        if (request && error instanceof WorkerApiError && ([400, 402, 413].includes(error.status) || (error.status === 410 && (error.body as { error?: string } | null)?.error === 'game_deleted'))) clearPendingOperation(request);
         const isPaywall = error instanceof WorkerApiError && error.status === 402
           && (error.body as { error?: string } | null)?.error === 'games_limit_reached';
         if (error instanceof WorkerApiError && [401, 403].includes(error.status)) {

@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createGameSessionController } from './gameSessionController';
 import { makeGame, makeSnapshot, memoryStorage, deferred } from '../testUtils/fixtures';
 import { WorkerApiError, type RollResult } from '../api/workerClient';
+import { loadPendingStart } from './pendingOperations';
 import { setStorageOwner } from '../storage/localStorage';
 describe('game session request fencing', () => {
   beforeEach(() => {
@@ -15,6 +16,15 @@ describe('game session request fencing', () => {
     const controller = createGameSessionController({ create, roll, get });
     return { create, roll, get, controller };
   }
+  it('retires a deleted creation key before starting a fresh game', async () => {
+    const f = fixture();
+    f.create.mockRejectedValueOnce(new WorkerApiError('deleted', 410, {error:'game_deleted'}));
+    await expect(f.controller.startGame()).rejects.toMatchObject({status:410});
+    const oldKey = f.create.mock.calls[0][2];
+    expect(loadPendingStart()).toBeNull();
+    await f.controller.startGame();
+    expect(f.create.mock.calls[1][2]).not.toBe(oldKey);
+  });
   it('late creation cannot restore a reset session or release a newer request', async () => {
     const f = fixture(); const first = deferred<ReturnType<typeof makeGame>>(); const second = deferred<ReturnType<typeof makeGame>>();
     f.create.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);

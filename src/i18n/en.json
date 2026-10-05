@@ -131,7 +131,7 @@
   "(без запроса)": "(no intention)",
   "· клетка": "· square",
   "Открываем…": "Opening…",
-  "Удалить": "Hide",
+  "Удалить": "Delete",
   "Обновляем…": "Refreshing…",
   "Обновить список": "Refresh list",
   "Загрузить ещё": "Load more",
@@ -196,5 +196,15 @@
   "Написать автору": "Contact the creator",
   "Поддержка Tribute": "Tribute Support",
   "Диалог": "Dialog",
-  "Результат броска": "Roll result"
+  "Результат броска": "Roll result",
+  "Не удалось подтвердить удаление. Обновите список и попробуйте снова.": "Could not confirm deletion. Refresh the list and try again.",
+  "Эта партия удалена. Начните новую партию.": "This game has been deleted. Start a new game.",
+  "Не удалось удалить партию. Проверьте соединение и повторите.": "Could not delete the game. Check your connection and try again.",
+  "Удалить партию?": "Delete this game?",
+  "Намерение, ходы и ИИ-разборы этой партии будут удалены с сервера. Восстановить их нельзя.": "This game’s intention, moves and AI reviews will be deleted from the server. They cannot be restored.",
+  "Сыгранная партия и готовый разбор не возвращаются на баланс. Если разбор ещё создаётся, его кредит вернётся. Покупки и баланс сохраняются.": "A played game and a completed review are not refunded. If a review is still being generated, its credit will be returned. Your purchases and remaining balance are kept.",
+  "Удаление в Лиле не удаляет данные, уже переданные Gemini. На других устройствах список обновится при подключении к серверу.": "Deleting a game in Leela does not delete data already sent to Gemini. Other devices will update their lists when they connect to the server.",
+  "Удаляем…": "Deleting…",
+  "Удалить партию": "Delete game",
+  "Для ИИ-разбора ваше намерение и путь партии передаются Google Gemini. Нажимая кнопку получения или повтора разбора, вы соглашаетесь с этой передачей. Не включайте в намерение данные, которыми не хотите делиться. Играть можно без ИИ-разбора.": "To create an AI review, your intention and game path are sent to Google Gemini. By requesting or retrying a review, you agree to this transfer. Do not include information you do not want to share. You can play without an AI review."
 }

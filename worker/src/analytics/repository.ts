@@ -30,8 +30,9 @@ export async function logAnalyticsEvent(
 ): Promise<void> {
   try {
     await db
-      .prepare('INSERT INTO analytics_events (id, telegram_id, event, payload, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), telegramId, event, payload ? JSON.stringify(payload) : null, Date.now())
+      .prepare(`INSERT INTO analytics_events (id, telegram_id, event, payload, created_at)
+        SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM game_deletions WHERE game_id = ?)`)
+      .bind(crypto.randomUUID(), telegramId, event, payload ? JSON.stringify(payload) : null, Date.now(), typeof payload?.gameId === 'string' ? payload.gameId : null)
       .run();
   } catch {
     // Аналитика — вспомогательная, не должна ронять или замедлять основной

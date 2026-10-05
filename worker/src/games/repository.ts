@@ -1,3 +1,4 @@
+import { GameDeletedError, wasCreationDeleted } from './deletion';
 import limits from '../../../src/data/limits.json';
 import type { GameState, GameStatus, DiceMode, Roll, Turn } from '../types/game';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from '../payments/catalog';
@@ -158,11 +159,12 @@ export async function createGameWithCharge(
       FROM user_balances WHERE telegram_id = ?
         AND (free_games_remaining > 0 OR paid_games > 0 OR ${activeSubscription})
         AND NOT EXISTS (SELECT 1 FROM games WHERE telegram_id = ? AND client_request_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM game_deletions WHERE telegram_id = ? AND client_request_id = ?)
       ON CONFLICT DO NOTHING`)
       .bind(p.id, p.telegram_id, p.status, p.ruleset_id, p.ruleset_version, p.dice_mode,
         p.current_cell, p.is_born, p.rolls_json, p.turns_json, p.created_at, p.updated_at,
         p.consecutive_sixes, p.position_before_six_series, p.request, clientRequestId,
-        telegramId, telegramId, now, telegramId, clientRequestId),
+        telegramId, telegramId, now, telegramId, clientRequestId, telegramId, clientRequestId),
     db.prepare(`UPDATE user_balances SET
       free_games_remaining = free_games_remaining - CASE WHEN free_games_remaining > 0 THEN 1 ELSE 0 END,
       paid_games = paid_games - CASE WHEN free_games_remaining = 0 THEN 1 ELSE 0 END,
@@ -174,7 +176,10 @@ export async function createGameWithCharge(
       .bind(telegramId, clientRequestId),
   ]);
   const row = result[4].results?.[0] as unknown as GameRow | undefined;
-  if (!row) throw new InsufficientBalanceError();
+  if (!row) {
+    if (await wasCreationDeleted(db, telegramId, clientRequestId)) throw new GameDeletedError();
+    throw new InsufficientBalanceError();
+  }
   const created = (result[2].meta.changes ?? 0) > 0;
   const sourceRow = result[1].results?.[0] as { source: GameChargeSource | null } | undefined;
   const source = created ? sourceRow?.source ?? null : null;
