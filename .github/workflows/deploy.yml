@@ -31,7 +31,9 @@ jobs:
       pages: write
       id-token: write
     concurrency:
-      group: pages
+      # The old "pages" group holds a job stuck before runner assignment.
+      # Use a fresh serial queue; old queued jobs still have the main-SHA guard.
+      group: pages-production
       cancel-in-progress: false
     environment:
       name: github-pages
