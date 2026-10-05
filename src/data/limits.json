@@ -1,0 +1,10 @@
+{
+  "requestCharacters": 2000,
+  "identifierCharacters": 128,
+  "jsonBodyBytes": 16384,
+  "gameRolls": 5000,
+  "gameStateBytes": 2097152,
+  "historyPageBytes": 4194304,
+  "reviewDetailedTurns": 120,
+  "reviewPromptCharacters": 32000
+}

@@ -184,5 +184,12 @@
   "Не удалось подтвердить последний бросок. Следующая попытка повторит тот же запрос.": "Could not confirm the last roll. Your next attempt will retry the same request.",
   "Выбрать язык": "Choose language",
   "Английский": "English",
-  "Русский": "Russian"
+  "Русский": "Russian",
+  "{0} / {1} символов": "{0} / {1} characters",
+  "Слишком много запросов. Повторите через {0} сек.": "Too many requests. Try again in {0} seconds.",
+  "Сократите запрос до {0} символов.": "Shorten your intention to {0} characters.",
+  "Запрос слишком большой. Сократите текст и попробуйте снова.": "The request is too large. Shorten the text and try again.",
+  "Достигнут предел истории этой партии. Сохранённые ходы доступны в истории; можно начать новую партию.": "This game has reached its history limit. Saved moves remain available in History; you can start a new game.",
+  "Некорректный идентификатор запроса. Перезапустите игру через Telegram.": "The request identifier is invalid. Reopen the game through Telegram.",
+  "Эта партия слишком большая для ИИ-разбора. Её история сохранена, попытка не списана.": "This game is too large for an AI review. Its history is saved and no review credit was used."
 }

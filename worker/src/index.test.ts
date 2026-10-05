@@ -3,6 +3,9 @@ import worker, { type Env } from './index';
 import { createSqliteD1 } from './testUtils/sqliteD1';
 import { buildSignedInitData, freshAuthDate, TEST_BOT_TOKEN } from './testUtils/signInitData';
 import { getOrCreateUserBalance } from './payments/repository';
+import limits from '../../src/data/limits.json';
+import { RATE_LIMITS } from './http/rateLimit';
+import { listGamesByUser } from './games/repository';
 import { listAnalyticsEvents } from './analytics/repository';
 
 const databases: ReturnType<typeof createSqliteD1>[] = [];
@@ -1409,5 +1412,142 @@ describe('монетизация (батч 5) — аналитика §26', () =
     );
     expect(res.status).toBe(400);
     expect(await listAnalyticsEvents(env.DB, String(50009))).toHaveLength(0);
+  });
+});
+
+
+describe('API resource limits and safe retries', () => {
+  let env: Env; let auth: string;
+  beforeEach(async () => { env = makeEnv(); auth = await authHeaderFor(60001); });
+  afterEach(async () => { await flushWaitUntil(); vi.restoreAllMocks(); });
+  async function post(path: string, body: unknown) {
+    return worker.fetch(req(path, { method: 'POST', headers: { Authorization: auth }, body: JSON.stringify(body) }), env, fakeCtx);
+  }
+  async function create(overrides: Record<string, unknown> = {}) {
+    return post('/api/v1/games', { request: 'test', diceMode: 'physical', clientRequestId: 'original', ...overrides });
+  }
+  async function fillBucket(bucket: keyof typeof RATE_LIMITS) {
+    await env.DB.prepare('INSERT OR REPLACE INTO api_rate_limits (telegram_id, bucket, window_start, requests) VALUES (?, ?, ?, ?)')
+      .bind('60001', bucket, Math.floor(Date.now() / 60000) * 60000, RATE_LIMITS[bucket]).run();
+  }
+  async function get(path: string) { return worker.fetch(req(path, { headers: { Authorization: auth } }), env, fakeCtx); }
+
+  it('rejects excessive intention length before charging, accepts the boundary, and allows replay at a full create budget', async () => {
+    expect((await create({ request: 'я'.repeat(limits.requestCharacters + 1) })).status).toBe(400);
+    expect((await getOrCreateUserBalance(env.DB, '60001')).free_games_remaining).toBe(1);
+    const accepted = await create({ request: 'я'.repeat(limits.requestCharacters) }); expect(accepted.status).toBe(201);
+    const original = (await readJson(accepted)).game;
+    await fillBucket('create');
+    expect((await create({ clientRequestId: 'new' })).status).toBe(429);
+    const replay = await create(); expect(replay.status).toBe(200);
+    expect((await readJson(replay)).game).toEqual(original);
+    expect((await getOrCreateUserBalance(env.DB, '60001')).free_games_remaining).toBe(0);
+  });
+
+  it.each(['', '   ', 'x'.repeat(129), null, 42])('rejects a supplied invalid operation ID (%s) without replacing it and spending a game', async clientRequestId => {
+    expect((await create({ clientRequestId })).status).toBe(400);
+    expect((await getOrCreateUserBalance(env.DB, '60001')).free_games_remaining).toBe(1);
+    expect(await env.DB.prepare('SELECT id FROM games').first()).toBeNull();
+  });
+
+  it.each(['1.5', '1.0', '', 'NaN', 'Infinity', '-1', '1e3', '9007199254740992'])('returns 400 for invalid list limit=%s instead of a SQLite failure', async value => {
+    expect((await get('/api/v1/games?limit=' + encodeURIComponent(value))).status).toBe(400);
+  });
+
+  it('also validates repository limits and bounds cursor size', async () => {
+    await expect(listGamesByUser(env.DB, '60001', { limit: 1.5 })).rejects.toThrow(RangeError);
+    expect((await get('/api/v1/games?cursor=' + 'x'.repeat(257))).status).toBe(400);
+    expect((await get('/api/v1/games?cursor=')).status).toBe(400);
+  });
+
+  it('pages large legacy histories within the response budget without skipping games', async () => {
+    await grantUnlimitedGamesForTest(env, 60001);
+    const ids = [];
+    for (let index = 0; index < 3; index++) {
+      const game = (await readJson(await create({ clientRequestId: 'large-' + index }))).game;
+      ids.push(game.id);
+      await env.DB.prepare('UPDATE games SET request = ? WHERE id = ?').bind('x'.repeat(limits.historyPageBytes / 2), game.id).run();
+    }
+    let cursor: string | null = null; const seen: string[] = [];
+    for (let index = 0; index < 3; index++) {
+      const page = await readJson(await get('/api/v1/games?limit=100' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '')));
+      expect(page.games).toHaveLength(1); seen.push(page.games[0].id); cursor = page.nextCursor;
+      expect(Boolean(cursor)).toBe(index < 2);
+    }
+    expect(seen.sort()).toEqual(ids.sort());
+  });
+
+  it('returns a CORS-readable 413 for oversized JSON without creating or charging a game', async () => {
+    const response = await worker.fetch(req('/api/v1/games', {
+      method: 'POST', headers: { Authorization: auth }, body: ' '.repeat(limits.jsonBodyBytes + 1),
+    }), env, fakeCtx);
+    expect(response.status).toBe(413); expect(await readJson(response)).toEqual({ error: 'body_too_large' });
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect((await getOrCreateUserBalance(env.DB, '60001')).free_games_remaining).toBe(1);
+  });
+
+  it('rejects new rolls at a full history limit but still returns old games and accepted roll retries', async () => {
+    const game = (await readJson(await create())).game;
+    const rolls = Array.from({ length: limits.gameRolls }, (_, index) => ({ id: 'r' + index, clientEventId: 'e' + index, value: 2, createdAt: game.createdAt }));
+    await env.DB.prepare('UPDATE games SET rolls_json = ? WHERE id = ?').bind(JSON.stringify(rolls), game.id).run();
+    expect((await post(`/api/v1/games/${game.id}/rolls`, { clientEventId: 'new', value: 2 })).status).toBe(400);
+    await fillBucket('roll');
+    const replay = await post(`/api/v1/games/${game.id}/rolls`, { clientEventId: 'e0', value: 6 });
+    expect(replay.status).toBe(200); expect((await readJson(replay)).value).toBe(2);
+    const stored = (await readJson(await get(`/api/v1/games/${game.id}`))).game;
+    expect(stored.currentTurnRolls).toHaveLength(limits.gameRolls); expect(stored.currentCell).toBe(0);
+    expect((await get('/api/v1/games')).status).toBe(200);
+  });
+
+  it('limits serialized history growth for oversized legacy games without deleting their contents', async () => {
+    const game = (await readJson(await create())).game;
+    const oldText = 'я'.repeat(limits.gameStateBytes / 2);
+    await env.DB.prepare('UPDATE games SET request = ? WHERE id = ?').bind(oldText, game.id).run();
+    const rejected = await post(`/api/v1/games/${game.id}/rolls`, { clientEventId: 'new', value: 2 });
+    expect(rejected.status).toBe(400); expect(await readJson(rejected)).toEqual({ error: 'history_limit_reached' });
+    const stored = (await readJson(await get(`/api/v1/games/${game.id}`))).game;
+    expect(stored.request).toBe(oldText); expect(stored.currentTurnRolls).toHaveLength(0);
+  });
+
+  it('rate-limits new rolls before mutation, supplies Retry-After, and allows an accepted replay', async () => {
+    const game = (await readJson(await create())).game;
+    expect((await post(`/api/v1/games/${game.id}/rolls`, { clientEventId: 'accepted', value: 2 })).status).toBe(200);
+    await fillBucket('roll');
+    const rejected = await post(`/api/v1/games/${game.id}/rolls`, { clientEventId: 'new', value: 6 });
+    expect(rejected.status).toBe(429); expect(Number(rejected.headers.get('Retry-After'))).toBeGreaterThan(0);
+    expect(rejected.headers.get('Access-Control-Expose-Headers')).toBe('Retry-After');
+    expect((await post(`/api/v1/games/${game.id}/rolls`, { clientEventId: 'accepted' })).status).toBe(200);
+    const stored = (await readJson(await get(`/api/v1/games/${game.id}`))).game;
+    expect(stored.isBorn).toBe(false); expect(stored.turns.flatMap((turn: any) => turn.rolls)).toHaveLength(1);
+  });
+
+  it('limits AI starts before charging and keeps cached reviews available at the limit', async () => {
+    const game = (await readJson(await create())).game;
+    await env.DB.prepare("UPDATE games SET status = 'FINISHED' WHERE id = ?").bind(game.id).run();
+    await fillBucket('analysis');
+    const provider = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'review' }] } }] })));
+    const path = `/api/v1/games/${game.id}/analysis/start`;
+    expect((await post(path, { kind: 'short' })).status).toBe(429);
+    expect((await getOrCreateUserBalance(env.DB, '60001')).free_ai_reviews_remaining).toBe(1);
+    expect(provider).not.toHaveBeenCalled();
+    await env.DB.prepare("DELETE FROM api_rate_limits WHERE bucket = 'analysis'").run();
+    expect((await post(path, { kind: 'short' })).status).toBe(202); await flushWaitUntil(); await fillBucket('analysis');
+    const cached = await post(path, { kind: 'short' }); expect(cached.status).toBe(200);
+    expect(await readJson(cached)).toMatchObject({ content: 'review' }); expect(provider).toHaveBeenCalledTimes(1);
+    expect((await getOrCreateUserBalance(env.DB, '60001')).free_ai_reviews_remaining).toBe(0);
+  });
+
+  it('bounds AI request bodies and analytics writes, and requires valid auth before touching a quota', async () => {
+    const game = (await readJson(await create())).game;
+    await env.DB.prepare("UPDATE games SET status = 'FINISHED' WHERE id = ?").bind(game.id).run();
+    expect((await post(`/api/v1/games/${game.id}/analysis/start`, { kind: 'short', padding: 'x'.repeat(limits.jsonBodyBytes) })).status).toBe(413);
+    expect((await getOrCreateUserBalance(env.DB, '60001')).free_ai_reviews_remaining).toBe(1);
+    await fillBucket('analytics');
+    expect((await post('/api/v1/analytics/event', { event: 'ai_offer_shown' })).status).toBe(429);
+    expect((await listAnalyticsEvents(env.DB, '60001')).filter(event => event.event === 'ai_offer_shown')).toHaveLength(0);
+    await fillBucket('api');
+    expect((await get('/api/v1/me')).status).toBe(429);
+    expect((await worker.fetch(req('/api/v1/me'), env, fakeCtx)).status).toBe(401);
+    expect((await worker.fetch(req('/api/v1/health'), env, fakeCtx)).status).toBe(200);
   });
 });

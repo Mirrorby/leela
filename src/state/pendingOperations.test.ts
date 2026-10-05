@@ -101,12 +101,30 @@ describe('durable game mutations', () => {
     setStorageOwner('222'); const other = prepareStart('other', 'physical');
     expect(clearPendingOperation(newer)).toBe(false); expect(loadPendingStart()?.id).toBe(other.id);
   });
-  it.each([400, 402])('retires a definitively rejected creation (%s) before a corrected request', async status => {
+  it.each([400, 402, 413])('retires a definitively rejected creation (%s) before a corrected request', async status => {
     const create = vi.fn().mockRejectedValueOnce(new WorkerApiError('rejected', status, { error: status === 402 ? 'games_limit_reached' : 'invalid_body' })).mockResolvedValue(makeGame());
     const controller = createGameSessionController({ create, roll: vi.fn(), get: vi.fn() });
     controller.setRequest('original'); await controller.startGame().catch(() => {});
     expect(loadPendingStart()).toBeNull(); controller.setRequest('corrected'); await controller.startGame();
     expect(create.mock.calls[1][0]).toBe('corrected'); expect(create.mock.calls[1][2]).not.toBe(create.mock.calls[0][2]);
+  });
+  it('keeps the original creation ID and payload after rate limiting', async () => {
+    const create = vi.fn().mockRejectedValueOnce(new WorkerApiError('wait', 429, { error: 'rate_limited' })).mockResolvedValue(makeGame());
+    const controller = createGameSessionController({ create, roll: vi.fn(), get: vi.fn() });
+    controller.setRequest('original'); await controller.startGame().catch(() => {});
+    expect(loadPendingStart()).not.toBeNull(); controller.setRequest('edited'); await controller.startGame();
+    expect(create.mock.calls[1]).toEqual(create.mock.calls[0]); expect(loadPendingStart()).toBeNull();
+  });
+  it('opens the known game during a rate-limited pending roll and retries the same roll later', async () => {
+    persistGame(makeSnapshot()); setActivePersistedGameId('g1'); const pending = prepareRoll('g1', 'physical', 6);
+    const roll = vi.fn().mockRejectedValueOnce(new WorkerApiError('wait 30 seconds', 429, { error: 'rate_limited' }))
+      .mockResolvedValue({ game: makeGame(), events: [], value: 6 });
+    const result = await recoverSession(() => true, { me, game: async () => makeGame(), roll });
+    expect(result?.record?.id).toBe('g1'); expect(result?.notice).toBe('wait 30 seconds');
+    expect(loadPendingRoll('g1')?.id).toBe(pending.id);
+    const controller = createGameSessionController({ create: vi.fn(), roll, get: vi.fn() });
+    controller.restore(result!.record!); await controller.roll(2);
+    expect(roll.mock.calls[1]).toEqual(roll.mock.calls[0]); expect(loadPendingRoll('g1')).toBeNull();
   });
   it('does not send any mutation when journalling fails', async () => {
     storage.setItem = () => { throw Error('quota'); };

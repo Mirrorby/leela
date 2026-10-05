@@ -31,6 +31,18 @@ describe('workerClient', () => {
     vi.useRealTimers();
   });
 
+  it.each(['ru', 'en'] as const)('shows localized limit errors (%s) with a retry time', async language => {
+    setLanguagePreference(language);
+    const provider = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ error: 'rate_limited', retryAfter: 12 }, 429));
+    await expect(createGameOnServer('test', 'virtual', 'id')).rejects.toMatchObject({
+      status: 429, message: language === 'en' ? 'Too many requests. Try again in 12 seconds.' : 'Слишком много запросов. Повторите через 12 сек.',
+    });
+    provider.mockResolvedValue(jsonResponse({ error: 'request_too_long' }, 400));
+    await expect(createGameOnServer('test', 'virtual', 'id')).rejects.toMatchObject({
+      status: 400, message: language === 'en' ? 'Shorten your intention to 2000 characters.' : 'Сократите запрос до 2000 символов.',
+    });
+  });
+
   it('createGameOnServer шлёт POST с телом {request, diceMode, clientRequestId} и заголовком Authorization: tma <initData>', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({ game: makeGame({id: 'g1'}) }, 201)

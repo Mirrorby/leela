@@ -32,7 +32,7 @@ export async function recoverSession(
       return { record, notice: null };
     } catch (error) {
       if (!isCurrent() || getStorageOwner() !== account.telegramId) return null;
-      if (error instanceof WorkerApiError && [400, 402].includes(error.status)) {
+      if (error instanceof WorkerApiError && [400, 402, 413].includes(error.status)) {
         clearPendingOperation(start);
         return { record: null, notice: error.message };
       }
@@ -60,12 +60,12 @@ export async function recoverSession(
         confirmPendingOperation(roll, game);
       } catch (error) {
         if (!isCurrent() || getStorageOwner() !== account.telegramId) return null;
-        if (error instanceof WorkerApiError && (error.status === 400 || error.status === 404 ||
+        if (error instanceof WorkerApiError && ([400, 404, 413].includes(error.status) ||
           (error.status === 409 && (error.body as { error?: string } | null)?.error === 'game_finished'))) clearPendingOperation(roll);
-        else if (canUseOfflineCache(error) || (error instanceof WorkerApiError && error.status === 409)) {
+        else if (canUseOfflineCache(error) || (error instanceof WorkerApiError && [409, 429].includes(error.status))) {
           const record = resumeGameSnapshot(snapshotFromServer(game, cached));
           persistGame(record);
-          return { record, notice: tr('Не удалось подтвердить последний бросок. Следующая попытка повторит тот же запрос.') };
+          return { record, notice: error instanceof WorkerApiError && error.status === 429 ? error.message : tr('Не удалось подтвердить последний бросок. Следующая попытка повторит тот же запрос.') };
         }
         else throw error;
       }

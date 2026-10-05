@@ -14,6 +14,14 @@ describe('generateReview', () => {
     expect(JSON.parse(fetchSpy.mock.calls[0][1]!.body as string).generationConfig)
       .toEqual({ maxOutputTokens: 768, thinkingConfig: { thinkingBudget: 0 } });
   });
+  it('bounds full output and rejects oversized provider responses', async () => {
+    const provider = vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiResponse({ candidates: [{ content: { parts: [{ text: 'full' }] } }] }));
+    await generateReview('dummy', 'prompt', 'full');
+    expect(JSON.parse(provider.mock.calls[0][1]!.body as string).generationConfig)
+      .toEqual({ maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 1024 } });
+    provider.mockResolvedValue(geminiResponse({ candidates: [{ content: { parts: [{ text: 'x'.repeat(128 * 1024) }] } }] }));
+    await expect(generateReview('dummy', 'prompt', 'full')).rejects.toThrow();
+  });
   it('rejects truncated provider output so the caller refunds the attempt', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(geminiResponse({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'unfinished' }] } }] }));
     await expect(generateReview('dummy', 'prompt', 'short')).rejects.toThrow('MAX_TOKENS');
@@ -32,11 +40,9 @@ describe('generateReview', () => {
   it('keeps the timeout active while reading a stalled response body', async () => {
     vi.useFakeTimers();
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-      const response = geminiResponse({});
-      vi.spyOn(response, 'json').mockImplementation(() => new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new Error('body timeout')), { once: true });
-      }));
-      return response;
+      return new Response(new ReadableStream({ start(controller) {
+        init?.signal?.addEventListener('abort', () => controller.error(new Error('body timeout')), { once: true });
+      } }));
     });
     const result = generateReview('key', 'prompt').catch((error: Error) => error);
     await vi.advanceTimersByTimeAsync(GEMINI_TIMEOUT_MS);

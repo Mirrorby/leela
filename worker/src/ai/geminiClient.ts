@@ -1,4 +1,5 @@
 import type { ReviewKind } from './reviewFormat';
+import { readBoundedText } from '../http/limits';
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 export const GEMINI_TIMEOUT_MS = 20_000;
@@ -33,7 +34,10 @@ export async function generateReview(apiKey: string, prompt: string, kind: Revie
       },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        ...(kind === 'short' ? { generationConfig: { maxOutputTokens: 768, thinkingConfig: { thinkingBudget: 0 } } } : {}),
+        generationConfig: {
+          maxOutputTokens: kind === 'short' ? 768 : 4096,
+          thinkingConfig: { thinkingBudget: kind === 'short' ? 0 : 1024 },
+        },
       }),
     });
 
@@ -41,7 +45,7 @@ export async function generateReview(apiKey: string, prompt: string, kind: Revie
       throw new Error(`Gemini API error ${response.status}`);
     }
 
-    const data = (await response.json()) as GeminiResponse;
+    const data = JSON.parse(await readBoundedText(response, 128 * 1024)) as GeminiResponse;
 
     if (data.promptFeedback?.blockReason) {
       throw new Error(`Gemini заблокировал запрос: ${data.promptFeedback.blockReason}`);

@@ -1,3 +1,4 @@
+import limits from '../data/limits.json';
 import { tr, getLanguage } from '../i18n/language';
 import type { DiceMode, GameState, RollEvent } from '../types/game';
 import { isGameState, isRollEvents } from '../game/validateGameState';
@@ -26,6 +27,7 @@ export class WorkerApiError extends Error {
 interface ErrorBody {
   error?: string;
   detail?: string;
+  retryAfter?: number;
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 15_000): Promise<T> {
@@ -99,7 +101,7 @@ export interface GamesPage {
 export async function listGamesOnServer(options: { cursor?: string | null; limit?: number } = {}): Promise<GamesPage> {
   const params = new URLSearchParams();
   if (options.cursor) params.set('cursor', options.cursor);
-  if (options.limit) params.set('limit', String(options.limit));
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
   const query = params.toString();
   const page = await apiFetch<GamesPage>(`/api/v1/games${query ? `?${query}` : ''}`);
   if (!page || !Array.isArray(page.games) || !(page.nextCursor === null || typeof page.nextCursor === 'string')) {
@@ -213,6 +215,12 @@ export async function logClientAnalyticsEvent(event: 'ai_offer_shown'): Promise<
 }
 
 function apiErrorMessage(body: ErrorBody | null, status: number): string {
+  if (status === 429) return tr('Слишком много запросов. Повторите через {0} сек.', Number.isFinite(body?.retryAfter) ? Math.max(1, Math.ceil(body!.retryAfter!)) : 60);
+  if (body?.error === 'request_too_long') return tr('Сократите запрос до {0} символов.', limits.requestCharacters);
+  if (status === 413) return tr('Запрос слишком большой. Сократите текст и попробуйте снова.');
+  if (body?.error === 'history_limit_reached') return tr('Достигнут предел истории этой партии. Сохранённые ходы доступны в истории; можно начать новую партию.');
+  if (body?.error === 'invalid_identifier') return tr('Некорректный идентификатор запроса. Перезапустите игру через Telegram.');
+  if (body?.error === 'analysis_input_too_large') return tr('Эта партия слишком большая для ИИ-разбора. Её история сохранена, попытка не списана.');
   if (body?.detail && (getLanguage() === 'ru' || !/[а-яё]/i.test(body.detail))) return tr(body.detail);
   if (status === 401 || status === 403) return tr('Откройте игру через Telegram, чтобы получить доступ к своим партиям.');
   if (status === 402) return tr('Партии закончились');

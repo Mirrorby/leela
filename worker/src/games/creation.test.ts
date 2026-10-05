@@ -57,6 +57,9 @@ describe('atomic game creation on real SQLite', () => {
   });
 
   it('a delayed request returns the other request\'s game without a second charge', async () => {
+    // Initialize admission middleware before gating the actual game/debit
+    // transaction; concurrent requests intentionally share schema setup.
+    await worker.fetch(new Request('https://example/api/v1/me', { headers: { Authorization: auth } }), env, {} as ExecutionContext);
     const original = env.DB.batch.bind(env.DB);
     let release!: () => void;
     let entered!: () => void;
