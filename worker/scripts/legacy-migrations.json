@@ -1,0 +1,18 @@
+{
+  "0001_init.sql": "632efaf10c840d5871053d231a374a79ee82405cd63f91edd3455c9719a3291b",
+  "0002_add_six_rule_columns.sql": "0c3930919a47220f1208c5ca016c4303aa029fd7d4fe5d553cb2e71482762963",
+  "0003_add_request_column.sql": "fa8e18e4a621f55653e822cdbb67c8172ea7ba610c4fc0bce5f1fc2eae44ed68",
+  "0004_add_version_column.sql": "1b6afb2c3140e35a73fe8cd55fc8d3e08437fa2a69fe22af0dc13ef07ff835f6",
+  "0005_add_games_telegram_updated_index.sql": "8a4baaaa056a8d9c3dd71377cfe0d329fb3dbf976a29110f16e21fcbba7724bb",
+  "0006_create_user_balances.sql": "a1c4185c9f691b0e2a2cef06d4e849ca653def064ee866a58fb0e890956b6c8b",
+  "0007_create_subscriptions.sql": "a97df72f9c5b2a567768143b0468dde0dc7e8b9601925b9a21e5b1aebeb4f61c",
+  "0008_create_transactions.sql": "988e6d1a421a5f670ba501f0a50792be915102077331614b7dffd535f4bfb547",
+  "0009_create_ai_reviews.sql": "c23defcfb411227714aba9195d450ff8a6dfa97fe77a8d8110787b085d811cab",
+  "0010_create_analytics_events.sql": "07236c06efc1fd707df63a3c8f876c1b806e150b4965c5de629927e3ba1edd8a",
+  "0011_add_client_request_id_to_games.sql": "de251d7849620d18e2b0cfcf67f4a05889a58bd4b140c777d22e30f1170ec22c",
+  "0012_add_subscription_expired_notified.sql": "f8d5c5f6b8ee7b22579ce66f1c4e6df814463fe825a58652306a8a76e1aa8f27",
+  "0013_create_tribute_purchases.sql": "fef57f530be6518dbfe7c8b7cf72b8c04e118b96524e2787652ae227593996ee",
+  "0014_application_policies.sql": "6b0be7e8da887b571b9f09d136ce59fdae04fe5eb0edfb6a62abd8e806da269a",
+  "0015_api_rate_limits.sql": "2e20d0ea234a3e0680576c3daff43a4a7b57b20f8ff4c703155003f1d28a5b68",
+  "0016_payment_events_and_legacy_refunds.sql": "a34cd91052626b1cb60edccfb33b613ba7e22aeca765c9a157f42793cf19f39b"
+}

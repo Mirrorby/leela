@@ -1,67 +1,75 @@
 name: Deploy Worker
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "worker/**"
-      # worker/src/game/rulesetLoader.ts импортирует classic-v1.json НАПРЯМУЮ
-      # из src/data/rulesets (единственный источник правды для фронта и
-      # воркера, см. worker/src/game/rulesetLoader.ts) — правка одного этого
-      # файла без изменений внутри worker/ раньше НЕ триггерила редеплой
-      # воркера, из-за чего задеплоенный воркер продолжал играть по старым
-      # (забандленным на момент прошлого деплоя) правилам, пока фронтенд уже
-      # обновился. Явно перечисляем всё, что воркер импортирует извне своей
-      # папки.
-      - "src/data/rulesets/**"
-      # Батч 4 (ИИ-разбор): worker/src/ai/reviewContentLoader.ts точно так же
-      # напрямую импортирует src/data/content/ru/cells.json — тот же класс
-      # бага, что уже был найден для rulesets выше, закрываем сразу, не
-      # дожидаясь повторного наступления.
-      - "src/data/content/**"
-      - "src/data/limits.json"
-      - "src/data/paymentSupport.json"
-      - ".github/workflows/deploy-worker.yml"
-  workflow_dispatch: {}
+  workflow_call:
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Never cancel a running schema change; skip obsolete queued releases by SHA.
+    concurrency:
+      group: worker-production
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: worker
+    env:
+      WRANGLER_SEND_METRICS: 'false'
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      # Явно фиксируем версию npm, а не полагаемся на то, что бандлит
-      # setup-node сегодня. Причина: package-lock.json ниже сгенерирован
-      # npm 12 — более старые npm (10.x) при ЗАПИСИ лока для этого
-      # конкретного дерева зависимостей (esbuild нужен в двух разных
-      # мажорных версиях — старой через wrangler, новой через vitest/vite)
-      # пишут внутренне противоречивый lock (пропускают часть
-      # platform-специфичных optionalDependencies для esbuild), который
-      # затем сами же `npm ci` отвергают. Баг воспроизвёлся именно так на
-      # деплое воркера. npm 12 пишет корректный лок; более старые npm его
-      # корректно ЧИТАЮТ (проверено), но писать заново (например, при
-      # случайном `npm install` вместо `npm ci`) им доверять нельзя.
-      # npm@12 требует Node ^22.22.2 || ^24.15.0 || >=26 (engines) — отсюда
-      # node-version: 22 выше; на node-version: 20 сама установка npm@12
-      # падает с EBADENGINE (второй заход на этот же баг: пофиксили
-      # написание lock-файла, не проверив требования к рантайму нового
-      # инструмента в ТОЙ ЖЕ среде, где он должен установиться).
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
       - run: npm install -g npm@12
-
       - run: npm ci
-
-      - run: npm test
-
+      - name: Check current main before changing schema
+        id: current
+        shell: bash
+        run: |
+          git fetch --no-tags origin main
+          if [ "$GITHUB_SHA" = "$(git rev-parse origin/main)" ]; then
+            echo 'latest=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'latest=false' >> "$GITHUB_OUTPUT"
+            echo 'Skipping an obsolete release.'
+          fi
+      - name: Reconcile legacy schema and apply pending D1 migrations
+        if: steps.current.outputs.latest == 'true'
+        run: npm run migrate:remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Check current main before deploying
+        if: steps.current.outputs.latest == 'true'
+        id: release
+        shell: bash
+        run: |
+          git fetch --no-tags origin main
+          if [ "$GITHUB_SHA" = "$(git rev-parse origin/main)" ]; then
+            echo 'latest=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'latest=false' >> "$GITHUB_OUTPUT"
+            echo 'Main changed during migration; the next release will deploy.'
+          fi
       - name: Deploy to Cloudflare
+        if: steps.release.outputs.latest == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: worker
           command: deploy
+      - name: Check Worker health
+        if: steps.release.outputs.latest == 'true'
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 3 --max-time 20 \
+            'https://leela-worker.nikita-karpof.workers.dev/api/v1/health' \
+            | node --input-type=module -e 'let data=""; for await (const chunk of process.stdin) data+=chunk; const health=JSON.parse(data); if (health.ok!==true || health.db!=="reachable") process.exit(1); console.log("Worker and D1 are reachable");'
