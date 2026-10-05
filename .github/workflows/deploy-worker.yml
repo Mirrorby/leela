@@ -19,6 +19,7 @@ on:
       # бага, что уже был найден для rulesets выше, закрываем сразу, не
       # дожидаясь повторного наступления.
       - "src/data/content/**"
+      - "src/data/limits.json"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch: {}
 

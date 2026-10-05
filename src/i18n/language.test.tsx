@@ -7,6 +7,7 @@ import { Splash } from '../screens/Splash';
 import { HowToPlay } from '../screens/HowToPlay';
 import { GameHome } from '../screens/GameHome';
 import { History } from '../screens/History';
+import { RequestInput } from '../screens/RequestInput';
 import { CellContent } from '../components/CellContent';
 import { productTitle } from '../components/ProductPurchase';
 import type { ScreenProps } from '../navigation/ScreenProps';
@@ -14,6 +15,16 @@ import { makeGame } from '../testUtils/fixtures';
 
 afterEach(() => { setLanguagePreference('auto'); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('automatic game language', () => {
+  it.each(['ru', 'en'] as const)('renders the intention limit and prevents submitting oversized legacy text (%s)', language => {
+    setLanguagePreference(language);
+    const render = (request: string) => renderToStaticMarkup(<RequestInput {...{
+      session: { request, setRequest: vi.fn() }, nav: { push: vi.fn() },
+    } as unknown as ScreenProps} />);
+    expect(render('test')).toContain('maxLength="2000"');
+    expect(render('test')).toContain(language === 'en' ? '4 / 2000 characters' : '4 / 2000 символов');
+    expect(render('test')).not.toContain('disabled=""');
+    expect(render('x'.repeat(2001))).toContain('disabled=""');
+  });
   it.each([
     ['ru', 'en-US', 'ru'], ['ru-RU', 'en', 'ru'], ['en', 'ru-RU', 'en'],
     ['de', 'ru', 'en'], [undefined, 'ru-BY', 'ru'], [undefined, 'fr', 'en'],

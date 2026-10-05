@@ -1,3 +1,4 @@
+import limits from '../../../src/data/limits.json';
 import type { GameState, GameStatus, DiceMode, Roll, Turn } from '../types/game';
 import { FREE_GAMES_DEFAULT, FREE_AI_REVIEWS_DEFAULT } from '../payments/catalog';
 import { ensureFreeGamePolicy } from '../payments/freeGamePolicy';
@@ -282,34 +283,41 @@ export async function listGamesByUser(
   telegramId: string,
   options: { limit?: number; cursor?: string | null } = {}
 ): Promise<ListGamesPage> {
-  const limit = Math.min(Math.max(1, options.limit ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
-  if (options.cursor && decodeCursor(options.cursor) === null) {
+  if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit < 1)) {
+    throw new RangeError('limit must be a positive integer');
+  }
+  const limit = Math.min(options.limit ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+  if (options.cursor !== undefined && options.cursor !== null &&
+    (!options.cursor || options.cursor.length > 256 || decodeCursor(options.cursor) === null)) {
     throw new InvalidCursorError();
   }
   const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
-  const query = cursor
-    ? `SELECT * FROM games WHERE telegram_id = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))
-       ORDER BY updated_at DESC, id DESC LIMIT ?`
-    : `SELECT * FROM games WHERE telegram_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?`;
-  const params = cursor
-    ? [telegramId, cursor.updatedAt, cursor.updatedAt, cursor.id, limit + 1]
-    : [telegramId, limit + 1];
-
-  const result = await db
-    .prepare(query)
-    .bind(...params)
-    .all<GameRow>();
-  const rows = result.results ?? [];
-
-  // Запрашиваем на одну строку больше (limit + 1): если она пришла — на
-  // сервере есть ещё данные за пределами этой страницы, отдаём курсор на
-  // последнюю строку ИЗ ВЫДАННОЙ страницы (не считая "разведочную"
-  // лишнюю); если не пришла — это последняя страница, nextCursor = null.
-  const hasMore = rows.length > limit;
-  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  // Budget rows inside SQLite before their full JSON enters Worker memory.
+  // A legacy oversized first row remains accessible by itself. Candidate
+  // metadata includes one lookahead so the cursor also works for byte cuts.
+  const where = cursor
+    ? 'telegram_id = ? AND (updated_at < ? OR (updated_at = ? AND id < ?))'
+    : 'telegram_id = ?';
+  const params = cursor ? [telegramId, cursor.updatedAt, cursor.updatedAt, cursor.id] : [telegramId];
+  const query = `WITH candidates AS (
+    SELECT id, updated_at,
+      length(CAST(request AS BLOB)) + length(CAST(rolls_json AS BLOB)) + length(CAST(turns_json AS BLOB)) + 1024 AS bytes
+    FROM games WHERE ${where} ORDER BY updated_at DESC, id DESC LIMIT ?
+  ), budgeted AS (
+    SELECT id, updated_at, ROW_NUMBER() OVER (ORDER BY updated_at DESC, id DESC) AS position,
+      SUM(bytes) OVER (ORDER BY updated_at DESC, id DESC ROWS UNBOUNDED PRECEDING) AS cumulative_bytes
+    FROM candidates
+  )
+  SELECT games.*, EXISTS(SELECT 1 FROM budgeted rest WHERE rest.position > page.position) AS has_more
+  FROM budgeted page JOIN games ON games.id = page.id
+  WHERE page.position <= ? AND (page.position = 1 OR page.cumulative_bytes <= ?)
+  ORDER BY page.updated_at DESC, page.id DESC`;
+  const result = await db.prepare(query).bind(...params, limit + 1, limit, limits.historyPageBytes)
+    .all<GameRow & { has_more: number }>();
+  const pageRows = result.results ?? [];
   const lastRow = pageRows[pageRows.length - 1];
-  const nextCursor = hasMore && lastRow ? encodeCursor(lastRow.updated_at, lastRow.id) : null;
+  const nextCursor = lastRow?.has_more ? encodeCursor(lastRow.updated_at, lastRow.id) : null;
 
   return { games: pageRows.map(rowToGameState), nextCursor };
 }

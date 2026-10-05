@@ -13,6 +13,9 @@ import { buildReviewPrompt } from './ai/reviewPrompt';
 import { generateReview } from './ai/geminiClient';
 import { logAnalyticsEvent } from './analytics/repository';
 import type { DiceMode, GameState } from './types/game';
+import limits from '../../src/data/limits.json';
+import { readBoundedText, BodyTooLargeError, isValidIdentifier } from './http/limits';
+import { consumeRateLimit, cleanExpiredRateLimits } from './http/rateLimit';
 
 export interface Env extends TributeEnv {
   DB: D1Database;
@@ -36,6 +39,7 @@ const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Expose-Headers': 'Retry-After',
 };
 
 function json(data: unknown, init: ResponseInit = {}): Response {
@@ -47,16 +51,21 @@ function json(data: unknown, init: ResponseInit = {}): Response {
 
 async function readJson<T>(request: Request): Promise<T | null> {
   try {
-    return (await request.json()) as T;
-  } catch {
+    return JSON.parse(await readBoundedText(request)) as T;
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) throw error;
     return null;
   }
+}
+
+function rateLimited(retryAfter: number): Response {
+  return json({ error: 'rate_limited', retryAfter }, { status: 429, headers: { 'Retry-After': String(retryAfter) } });
 }
 
 /** Возвращает валидированный initData или готовый Response с 401 для отправки как есть. */
 async function requireAuth(request: Request, env: Env): Promise<ValidatedInitData | Response> {
   const initData = extractInitData(request);
-  if (!initData) {
+  if (!initData || initData.length > 16384) {
     return json({ error: 'unauthorized', detail: 'missing Authorization: tma <initData> header' }, { status: 401 });
   }
   const result = await validateInitData(initData, env.BOT_TOKEN);
@@ -69,7 +78,8 @@ async function requireAuth(request: Request, env: Env): Promise<ValidatedInitDat
     return json({ error: 'unauthorized', detail: `invalid initData: ${result.reason}` }, { status: 401 });
   }
   const { ok: _ok, ...validated } = result;
-  return validated;
+  const retryAfter = await consumeRateLimit(env.DB, validated.telegramId, 'api');
+  return retryAfter === null ? validated : rateLimited(retryAfter);
 }
 
 function isValidatedInitData(value: ValidatedInitData | Response): value is ValidatedInitData {
@@ -85,16 +95,12 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
     return json({ error: 'invalid_body', detail: 'diceMode must be "physical" or "virtual"' }, { status: 400 });
   }
 
-  // clientRequestId опционален для совместимости со старым фронтом, который
-  // его ещё не шлёт (появится в батче 6) — но БЕЗ него ретрай после
-  // потерянного ответа спишет партию из баланса повторно (тот же класс
-  // бага, что уже чинили для бросков — см. findRollByClientEventId ниже).
-  // Если клиент не передал id — генерируем сами; это не защищает ОТ
-  // повторного списания при ретрае (сервер не может отличить "клиент
-  // повторяет то же действие" от "клиент начинает новую партию" без ключа
-  // от самого клиента), но и не ломает запросы от ещё не обновившегося
-  // фронта прямо сейчас.
-  const clientRequestId = typeof body.clientRequestId === 'string' && body.clientRequestId ? body.clientRequestId : crypto.randomUUID();
+  // Older clients may omit the key; supplied invalid keys must not silently
+  // become a different operation and debit a second game on retry.
+  if (body.clientRequestId !== undefined && !isValidIdentifier(body.clientRequestId)) {
+    return json({ error: 'invalid_identifier' }, { status: 400 });
+  }
+  const clientRequestId = (body.clientRequestId as string | undefined) ?? crypto.randomUUID();
 
   // Идемпотентность — ДО списания баланса и ДО создания партии, тем же
   // приёмом, что дедупликация бросков (handleRoll ниже): если эту партию
@@ -103,6 +109,12 @@ async function handleCreateGame(request: Request, env: Env, auth: ValidatedInitD
   if (existing) {
     return json({ game: existing });
   }
+
+  if (body.request.length > limits.requestCharacters) {
+    return json({ error: 'request_too_long', maxCharacters: limits.requestCharacters }, { status: 400 });
+  }
+  const retryAfter = await consumeRateLimit(env.DB, auth.telegramId, 'create');
+  if (retryAfter !== null) return rateLimited(retryAfter);
 
   const ruleset = getRuleset(DEFAULT_RULESET_ID);
   if (!ruleset) {
@@ -131,8 +143,11 @@ async function handleListGames(request: Request, env: Env, auth: ValidatedInitDa
   const limitParam = url.searchParams.get('limit');
   const cursorParam = url.searchParams.get('cursor');
   const limit = limitParam ? Number(limitParam) : undefined;
-  if (limitParam !== null && (!Number.isFinite(limit) || limit! < 1)) {
+  if (limitParam !== null && (!/^\d+$/.test(limitParam) || !Number.isSafeInteger(limit) || limit! < 1)) {
     return json({ error: 'invalid_query', detail: 'limit must be a positive integer' }, { status: 400 });
+  }
+  if (cursorParam !== null && (cursorParam.length === 0 || cursorParam.length > 256)) {
+    return json({ error: 'invalid_query', detail: 'cursor is malformed' }, { status: 400 });
   }
   try {
     const page = await listGamesByUser(env.DB, auth.telegramId, { limit, cursor: cursorParam });
@@ -187,6 +202,8 @@ async function handleLogClientEvent(request: Request, env: Env, auth: ValidatedI
   if (body?.event !== 'ai_offer_shown') {
     return json({ error: 'invalid_body', detail: 'event must be one of: ai_offer_shown' }, { status: 400 });
   }
+  const retryAfter = await consumeRateLimit(env.DB, auth.telegramId, 'analytics');
+  if (retryAfter !== null) return rateLimited(retryAfter);
   await logAnalyticsEvent(env.DB, auth.telegramId, 'ai_offer_shown');
   return json({ ok: true });
 }
@@ -207,10 +224,10 @@ async function logAiEvent(env: Env, telegramId: string, event: 'free_ai_used' | 
 /** Fast background work is bounded below waitUntil's 30-second lifetime.
  * Persistent reservations are recovered on read/start and by cron if the
  * isolate is terminated. Only this attempt may settle or refund its credit. */
-async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, attempt: number, kind: ReviewKind, language: ReviewLanguage): Promise<void> {
+async function generateAndStoreReview(env: Env, game: GameState, telegramId: string, attempt: number, kind: ReviewKind, prompt: string): Promise<void> {
   let saved: boolean;
   try {
-    const text = await generateReview(env.GEMINI_API_KEY, buildReviewPrompt(game, kind, language), kind);
+    const text = await generateReview(env.GEMINI_API_KEY, prompt, kind);
     saved = await markAiReviewReady(env.DB, game.id, attempt, text);
   } catch {
     await failAiReviewAndRefund(env.DB, game.id, attempt);
@@ -234,7 +251,7 @@ async function handleStartAiReview(request: Request, env: Env, ctx: ExecutionCon
 
   let kind: ReviewKind = 'short';
   let language: ReviewLanguage = 'ru';
-  const raw = await request.text();
+  const raw = await readBoundedText(request);
   if (raw) {
     let body;
     try { body = JSON.parse(raw); } catch { return json({ error: 'invalid_body' }, { status: 400 }); }
@@ -243,7 +260,16 @@ async function handleStartAiReview(request: Request, env: Env, ctx: ExecutionCon
     if (body.language !== undefined && body.language !== 'ru' && body.language !== 'en') return json({ error: 'invalid_review_language' }, { status: 400 });
     language = body.language ?? 'ru';
   }
-  await getRecoverableAiReview(env.DB, gameId);
+  const existing = await getRecoverableAiReview(env.DB, gameId);
+  if (existing) {
+    const view = publicAiReview(existing, kind === 'short');
+    if (view.status === 'ready' && (kind === 'short' || view.kind === 'full')) return json(view);
+    if (existing.status === 'pending') return json({ ...view, error: 'already_generating' }, { status: 409 });
+  }
+  const prompt = buildReviewPrompt(game, kind, language);
+  if (prompt.length > limits.reviewPromptCharacters) return json({ error: 'analysis_input_too_large' }, { status: 400 });
+  const retryAfter = await consumeRateLimit(env.DB, auth.telegramId, 'analysis');
+  if (retryAfter !== null) return rateLimited(retryAfter);
   let reservation;
   try {
     reservation = await reserveAiReview(env.DB, gameId, auth.telegramId, kind, language);
@@ -264,7 +290,7 @@ async function handleStartAiReview(request: Request, env: Env, ctx: ExecutionCon
   }
 
   // Schedule first: an analytics failure must not strand a reservation.
-  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, review.updated_at, kind, language).catch(() => {
+  ctx.waitUntil(generateAndStoreReview(env, game, auth.telegramId, review.updated_at, kind, prompt).catch(() => {
     console.warn('AI attempt settlement failed; reservation remains recoverable');
   }));
   ctx.waitUntil((async () => {
@@ -290,8 +316,8 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
   const { game, version } = found;
 
   const body = await readJson<{ clientEventId?: unknown; value?: unknown; diceMode?: unknown }>(request);
-  if (!body || typeof body.clientEventId !== 'string' || !body.clientEventId) {
-    return json({ error: 'invalid_body', detail: 'clientEventId (string) is required' }, { status: 400 });
+  if (!body || !isValidIdentifier(body.clientEventId)) {
+    return json({ error: 'invalid_identifier' }, { status: 400 });
   }
 
   // Проверка дубликата — НАМЕРЕННО до применения diceMode и до генерации
@@ -352,7 +378,16 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
     return json({ error: 'game_finished' }, { status: 409 });
   }
 
+  const rollCount = game.turns.reduce((count, turn) => count + turn.rolls.length, game.currentTurnRolls.length);
+  if (rollCount >= limits.gameRolls) return json({ error: 'history_limit_reached' }, { status: 400 });
+  const retryAfter = await consumeRateLimit(env.DB, auth.telegramId, 'roll');
+  if (retryAfter !== null) return rateLimited(retryAfter);
+
   const { game: nextGame, events } = processRoll(game, ruleset, value, body.clientEventId);
+
+  if (new TextEncoder().encode(JSON.stringify(nextGame)).byteLength > limits.gameStateBytes) {
+    return json({ error: 'history_limit_reached' }, { status: 400 });
+  }
 
   const isDuplicate = events.some((e) => e.type === 'DUPLICATE_IGNORED');
   if (!isDuplicate) {
@@ -380,122 +415,136 @@ async function handleRoll(request: Request, env: Env, auth: ValidatedInitData, g
   return json({ game: nextGame, events, value });
 }
 
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
+async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  // Проверка живости воркера и доступности D1 — не требует авторизации.
+  if (url.pathname === '/api/v1/health') {
+    try {
+      await env.DB.prepare('SELECT 1').first();
+      return json({ ok: true, db: 'reachable', ts: Date.now() });
+    } catch (err) {
+      return json({ ok: false, db: 'unreachable', error: String(err) }, { status: 500 });
+    }
+  }
+
+  if (url.pathname === '/api/v1/me') {
+    const auth = await requireAuth(request, env);
+    if (!isValidatedInitData(auth)) return auth;
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
+    return json({ telegramId: auth.telegramId });
+  }
+
+  if (url.pathname.startsWith('/api/v1/games')) {
+    const auth = await requireAuth(request, env);
+    if (!isValidatedInitData(auth)) return auth;
+
+    if (url.pathname.split('/').some((segment) => segment.length > limits.identifierCharacters)) {
+      return json({ error: 'invalid_identifier' }, { status: 400 });
     }
 
-    // Проверка живости воркера и доступности D1 — не требует авторизации.
-    if (url.pathname === '/api/v1/health') {
-      try {
-        await env.DB.prepare('SELECT 1').first();
-        return json({ ok: true, db: 'reachable', ts: Date.now() });
-      } catch (err) {
-        return json({ ok: false, db: 'unreachable', error: String(err) }, { status: 500 });
-      }
+    // /api/v1/games
+    if (url.pathname === '/api/v1/games') {
+      if (request.method === 'POST') return handleCreateGame(request, env, auth);
+      if (request.method === 'GET') return handleListGames(request, env, auth);
+      return json({ error: 'method_not_allowed' }, { status: 405 });
     }
 
-    if (url.pathname === '/api/v1/me') {
-      const auth = await requireAuth(request, env);
-      if (!isValidatedInitData(auth)) return auth;
-      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
-      return json({ telegramId: auth.telegramId });
+    // /api/v1/games/:id
+    const singleMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)$/);
+    if (singleMatch) {
+      if (request.method === 'GET') return handleGetGame(env, auth, singleMatch[1]);
+      return json({ error: 'method_not_allowed' }, { status: 405 });
     }
 
-    if (url.pathname.startsWith('/api/v1/games')) {
-      const auth = await requireAuth(request, env);
-      if (!isValidatedInitData(auth)) return auth;
-
-      // /api/v1/games
-      if (url.pathname === '/api/v1/games') {
-        if (request.method === 'POST') return handleCreateGame(request, env, auth);
-        if (request.method === 'GET') return handleListGames(request, env, auth);
-        return json({ error: 'method_not_allowed' }, { status: 405 });
-      }
-
-      // /api/v1/games/:id
-      const singleMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)$/);
-      if (singleMatch) {
-        if (request.method === 'GET') return handleGetGame(env, auth, singleMatch[1]);
-        return json({ error: 'method_not_allowed' }, { status: 405 });
-      }
-
-      // /api/v1/games/:id/rolls
-      const rollsMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/rolls$/);
-      if (rollsMatch) {
-        if (request.method === 'POST') return handleRoll(request, env, auth, rollsMatch[1]);
-        return json({ error: 'method_not_allowed' }, { status: 405 });
-      }
-
-      // /api/v1/games/:id/analysis/start
-      const analysisStartMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/analysis\/start$/);
-      if (analysisStartMatch) {
-        if (request.method === 'POST') return handleStartAiReview(request, env, ctx, auth, analysisStartMatch[1]);
-        return json({ error: 'method_not_allowed' }, { status: 405 });
-      }
-
-      // /api/v1/games/:id/analysis
-      const analysisMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/analysis$/);
-      if (analysisMatch) {
-        if (request.method === 'GET') return handleGetAiReview(env, auth, analysisMatch[1]);
-        return json({ error: 'method_not_allowed' }, { status: 405 });
-      }
-
-      return json({ error: 'not_found' }, { status: 404 });
+    // /api/v1/games/:id/rolls
+    const rollsMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/rolls$/);
+    if (rollsMatch) {
+      if (request.method === 'POST') return handleRoll(request, env, auth, rollsMatch[1]);
+      return json({ error: 'method_not_allowed' }, { status: 405 });
     }
 
-    // Монетизация (см. payments/) — авторизация тем же initData, что и
-    // остальной API, для единообразия и потому что каталог/баланс всё равно
-    // персонализированы вторым эндпоинтом (entitlements зависит от
-    // telegram_id), так что делать products публичным ради одного запроса
-    // без initData не даёт выгоды, а вносит асимметрию в код авторизации.
-    if (url.pathname === '/api/v1/products') {
-      const auth = await requireAuth(request, env);
-      if (!isValidatedInitData(auth)) return auth;
-      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
-      return handleListProducts(env);
+    // /api/v1/games/:id/analysis/start
+    const analysisStartMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/analysis\/start$/);
+    if (analysisStartMatch) {
+      if (request.method === 'POST') return handleStartAiReview(request, env, ctx, auth, analysisStartMatch[1]);
+      return json({ error: 'method_not_allowed' }, { status: 405 });
     }
 
-    if (url.pathname === '/api/v1/entitlements') {
-      const auth = await requireAuth(request, env);
-      if (!isValidatedInitData(auth)) return auth;
-      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
-      return handleGetEntitlements(env, auth);
-    }
-
-    if (url.pathname === '/api/v1/payments/invoice') {
-      const auth = await requireAuth(request, env);
-      if (!isValidatedInitData(auth)) return auth;
-      if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
-      return json({ error: 'stars_payments_retired', detail: 'Оплата Stars больше недоступна. Используйте товары Tribute.' }, { status: 410 });
-    }
-
-    if (url.pathname === '/api/v1/analytics/event') {
-      const auth = await requireAuth(request, env);
-      if (!isValidatedInitData(auth)) return auth;
-      if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
-      return handleLogClientEvent(request, env, auth);
-    }
-
-    if (url.pathname === '/telegram/webhook') {
-      if (request.method !== 'POST') {
-        return json({ error: 'method_not_allowed' }, { status: 405 });
-      }
-      return handleTelegramWebhook(request, env.BOT_TOKEN, env.WEBHOOK_SECRET, env.DB);
-    }
-
-    if (url.pathname === '/tribute/webhook') {
-      return handleTributeWebhook(request, env);
+    // /api/v1/games/:id/analysis
+    const analysisMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/analysis$/);
+    if (analysisMatch) {
+      if (request.method === 'GET') return handleGetAiReview(env, auth, analysisMatch[1]);
+      return json({ error: 'method_not_allowed' }, { status: 405 });
     }
 
     return json({ error: 'not_found' }, { status: 404 });
+  }
+
+  // Монетизация (см. payments/) — авторизация тем же initData, что и
+  // остальной API, для единообразия и потому что каталог/баланс всё равно
+  // персонализированы вторым эндпоинтом (entitlements зависит от
+  // telegram_id), так что делать products публичным ради одного запроса
+  // без initData не даёт выгоды, а вносит асимметрию в код авторизации.
+  if (url.pathname === '/api/v1/products') {
+    const auth = await requireAuth(request, env);
+    if (!isValidatedInitData(auth)) return auth;
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
+    return handleListProducts(env);
+  }
+
+  if (url.pathname === '/api/v1/entitlements') {
+    const auth = await requireAuth(request, env);
+    if (!isValidatedInitData(auth)) return auth;
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, { status: 405 });
+    return handleGetEntitlements(env, auth);
+  }
+
+  if (url.pathname === '/api/v1/payments/invoice') {
+    const auth = await requireAuth(request, env);
+    if (!isValidatedInitData(auth)) return auth;
+    if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
+    return json({ error: 'stars_payments_retired', detail: 'Оплата Stars больше недоступна. Используйте товары Tribute.' }, { status: 410 });
+  }
+
+  if (url.pathname === '/api/v1/analytics/event') {
+    const auth = await requireAuth(request, env);
+    if (!isValidatedInitData(auth)) return auth;
+    if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, { status: 405 });
+    return handleLogClientEvent(request, env, auth);
+  }
+
+  if (url.pathname === '/telegram/webhook') {
+    if (request.method !== 'POST') {
+      return json({ error: 'method_not_allowed' }, { status: 405 });
+    }
+    return handleTelegramWebhook(request, env.BOT_TOKEN, env.WEBHOOK_SECRET, env.DB);
+  }
+
+  if (url.pathname === '/tribute/webhook') {
+    return handleTributeWebhook(request, env);
+  }
+
+  return json({ error: 'not_found' }, { status: 404 });
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try {
+      return await routeRequest(request, env, ctx);
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) return json({ error: 'body_too_large' }, { status: 413 });
+      throw error;
+    }
   },
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
     // Recover credits even when there is no client left to poll the review.
     await recoverExpiredAiReviews(env.DB);
     await retireStarsRenewals(env.DB, env.BOT_TOKEN);
+    await cleanExpiredRateLimits(env.DB);
   },
 };

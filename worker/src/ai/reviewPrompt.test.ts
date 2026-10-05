@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildReviewPrompt } from './reviewPrompt';
 import { getCellContent } from './reviewContentLoader';
+import limits from '../../../src/data/limits.json';
 import type { GameState, Turn } from '../types/game';
 
 function turn(startCell: number, landedCell: number, finalCell: number): Turn {
@@ -28,6 +29,18 @@ function makeGame(overrides: Partial<GameState> = {}): GameState {
 }
 
 describe('buildReviewPrompt', () => {
+  it.each(['ru', 'en'] as const)('bounds huge legacy prompts (%s) with actual first/last turns and exact aggregate counts', language => {
+    const game = makeGame({ request: 'a'.repeat(100000), turns: Array.from({ length: 5000 }, () => turn(1, 6, 4)) });
+    const before = JSON.stringify(game);
+    const prompt = buildReviewPrompt(game, 'full', language);
+    expect(prompt.length).toBeLessThanOrEqual(limits.reviewPromptCharacters);
+    expect(prompt).toContain('1. №1'); expect(prompt).toContain('5000. №1');
+    expect(prompt).not.toContain('2500. №1');
+    expect(prompt).toContain('6→4: 5000');
+    expect(prompt).toContain(language === 'en' ? 'Do not invent their order or events' : 'Не выдумывай их порядок или события');
+    expect(JSON.stringify(game)).toBe(before);
+  });
+
   it('uses English instructions, names and descriptions while preserving the original intention', () => {
     for (const kind of ['short', 'full'] as const) {
       const prompt = buildReviewPrompt(makeGame({ request: 'Original intention' }), kind, 'en');

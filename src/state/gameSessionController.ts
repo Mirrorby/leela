@@ -115,7 +115,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         return game;
       } catch (error) {
         requireCurrent(operation);
-        if (request && error instanceof WorkerApiError && [400, 402].includes(error.status)) clearPendingOperation(request);
+        if (request && error instanceof WorkerApiError && [400, 402, 413].includes(error.status)) clearPendingOperation(request);
         const isPaywall = error instanceof WorkerApiError && error.status === 402
           && (error.body as { error?: string } | null)?.error === 'games_limit_reached';
         if (error instanceof WorkerApiError && [401, 403].includes(error.status)) {
@@ -150,7 +150,7 @@ export function createGameSessionController(api: SessionApi = { create: createGa
         return { ...result, move };
       } catch (error) {
         requireCurrent(operation);
-        if (request && error instanceof WorkerApiError && (error.status === 400 || error.status === 404 ||
+        if (request && error instanceof WorkerApiError && ([400, 404, 413].includes(error.status) ||
           (error.status === 409 && (error.body as { error?: string } | null)?.error === 'game_finished'))) clearPendingOperation(request);
         if (error instanceof WorkerApiError && [401, 403, 404].includes(error.status)) {
           removePersistedGame(game.id);
