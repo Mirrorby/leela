@@ -13,7 +13,7 @@ function run(args, capture = false) {
   });
 }
 function query(sql) {
-  // Wrangler 3 emits this diagnostic ahead of JSON when a proxy is configured.
+  // Wrangler may emit this diagnostic ahead of JSON when a proxy is configured.
   const output = run(['execute', 'leela', mode, '--command', sql, '--json', '--yes'], true)
     .replace(/^Proxy environment variables detected\.[^\n]*\r?\n/, '');
   const response = JSON.parse(output);
