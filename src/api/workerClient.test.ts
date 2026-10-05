@@ -2,6 +2,7 @@ import { setLanguagePreference } from '../i18n/language';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createGameOnServer,
+  deleteGameOnServer,
   rollOnServer,
   listGamesOnServer,
   getProductsFromServer,
@@ -22,6 +23,13 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('workerClient', () => {
+  it('sends authenticated DELETE and rejects unacknowledged deletion', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ deleted:true, clientRequestId:'create-key' }));
+    expect(await deleteGameOnServer('g1')).toEqual({ deleted:true, clientRequestId:'create-key' });
+    expect(spy.mock.calls[0][1]).toMatchObject({method:'DELETE',headers:{Authorization:'tma auth_date=1&user=%7B%22id%22%3A1%7D&hash=abc'}});
+    spy.mockResolvedValue(jsonResponse({}));
+    await expect(deleteGameOnServer('g1')).rejects.toMatchObject({status:502});
+  });
   it('sends only the product and click identity for Tribute telemetry', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
     await logTributeCheckoutClick('game_1', 'click-1');

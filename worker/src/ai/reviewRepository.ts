@@ -49,6 +49,7 @@ export async function reserveAiReview(
       SELECT ?, ?, 'pending', ${source},
         json_object('format', ?, 'kind', ${requestedKind}, 'shortContent', NULL, 'fullContent', NULL, 'language', ?, 'shortLanguage', CASE WHEN ${requestedKind} = 'short' THEN ? ELSE NULL END), NULL, ?, ? FROM user_balances
       WHERE telegram_id = ? AND ${budget}
+        AND NOT EXISTS (SELECT 1 FROM game_deletions WHERE game_id = ?)
       ON CONFLICT(game_id) DO UPDATE SET status = 'pending', charged_from = excluded.charged_from,
         content = json_object('format', ?, 'kind', json_extract(excluded.content, '$.kind'),
           'shortContent', ${storedShort}, 'fullContent', NULL, 'language', json_extract(excluded.content, '$.language'),
@@ -58,7 +59,7 @@ export async function reserveAiReview(
         AND (ai_reviews.status = 'failed' OR (ai_reviews.status = 'ready'
           AND ${storedFormat} = ? AND ${storedKind} = 'short' AND json_extract(excluded.content, '$.kind') = 'full'))
         AND NOT (json_extract(excluded.content, '$.kind') = 'short' AND ${storedShort} IS NOT NULL)`)
-      .bind(gameId, telegramId, REVIEW_FORMAT, language, language, now, now, telegramId, REVIEW_FORMAT, REVIEW_FORMAT),
+      .bind(gameId, telegramId, REVIEW_FORMAT, language, language, now, now, telegramId, gameId, REVIEW_FORMAT, REVIEW_FORMAT),
     db.prepare(`UPDATE user_balances SET
       free_ai_reviews_remaining = free_ai_reviews_remaining - CASE WHEN
         (SELECT charged_from FROM ai_reviews WHERE game_id = ?) = 'free' THEN 1 ELSE 0 END,

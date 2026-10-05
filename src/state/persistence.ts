@@ -95,9 +95,7 @@ export function setActivePersistedGameId(id: string | null): boolean {
   return setActiveGameId(id);
 }
 
-/** См. storage/localStorage.ts:hideGameId — "удалить" партию на сервере
- * сейчас невозможно (нет DELETE-эндпоинта), поэтому это локальное
- * сокрытие для этого устройства. */
+/** Retain historical device-only hiding preferences and hide acknowledged deletions. */
 export function getHiddenPersistedGameIds(): string[] {
   return getHiddenGameIds();
 }

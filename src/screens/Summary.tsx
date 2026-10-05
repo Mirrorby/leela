@@ -64,6 +64,7 @@ export function Summary({ session, nav }: ScreenProps) {
 
         {!['checking', 'pending', 'starting'].includes(aiState) && !(aiState === 'ready' && review.kind === 'full') && (
           <>
+            <p className="muted">{tr("Для ИИ-разбора ваше намерение и путь партии передаются Google Gemini. Нажимая кнопку получения или повтора разбора, вы соглашаетесь с этой передачей. Не включайте в намерение данные, которыми не хотите делиться. Играть можно без ИИ-разбора.")}</p>
             {!review.shortContent && (payments.entitlements?.freeAiReviewsRemaining ?? 0) > 0 && (
               <button className="primary" onClick={shortReview}>{tr("Получить краткий разбор бесплатно")}</button>
             )}

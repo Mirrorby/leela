@@ -74,7 +74,13 @@ try {
   const exhausted = await request('/api/v1/games', { method: 'POST',
     body: JSON.stringify({ request: 'Second operation', diceMode: 'physical', clientRequestId: randomUUID() }) });
   assert.equal(exhausted.status, 402, 'a repeat must not consume another credit or grant another free game');
-  console.log('Local Worker smoke passed: D1, auth, CORS, create, replay, list and free-game limit');
+  assert.ok(preflight.headers.get('Access-Control-Allow-Methods').includes('DELETE'));
+  assert.equal((await request(`/api/v1/games/${game.id}`, { method:'DELETE' })).status, 200);
+  assert.equal((await request(`/api/v1/games/${game.id}`, { method:'DELETE' })).status, 200);
+  assert.equal((await request(`/api/v1/games/${game.id}`)).status, 404);
+  assert.equal((await (await request('/api/v1/games')).json()).games.length, 0);
+  assert.equal((await request('/api/v1/games', { method:'POST', body })).status, 410);
+  console.log('Local Worker smoke passed: D1, auth, CORS, create, replay, list, free-game limit and deletion');
 } finally {
   if (worker?.pid && worker.exitCode === null && worker.signalCode === null) {
     const stopped = new Promise(resolve => worker.once('exit', resolve));

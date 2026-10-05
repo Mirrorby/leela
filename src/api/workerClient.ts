@@ -115,6 +115,14 @@ export async function getGameFromServer(gameId: string): Promise<GameState> {
   return checkedGame(result?.game, gameId);
 }
 
+export async function deleteGameOnServer(gameId: string): Promise<{ deleted: true; clientRequestId: string | null }> {
+  const result = await apiFetch<{ deleted: true; clientRequestId: string | null }>(`/api/v1/games/${encodeURIComponent(gameId)}`, { method: 'DELETE' });
+  if (result?.deleted !== true || !(result.clientRequestId === null || typeof result.clientRequestId === 'string')) {
+    throw new WorkerApiError(tr("Не удалось подтвердить удаление. Обновите список и попробуйте снова."), 502, { error: 'invalid_response' });
+  }
+  return result;
+}
+
 function checkedGame(value: unknown, expectedId?: string): GameState {
   if (!isGameState(value) || (expectedId && value.id !== expectedId)) {
     throw new WorkerApiError(tr("Не удалось прочитать партию. Попробуйте загрузить её снова."), 502, { error: 'invalid_response' });
@@ -216,6 +224,7 @@ export async function logClientAnalyticsEvent(event: 'ai_offer_shown'): Promise<
 
 function apiErrorMessage(body: ErrorBody | null, status: number): string {
   if (status === 429) return tr('Слишком много запросов. Повторите через {0} сек.', Number.isFinite(body?.retryAfter) ? Math.max(1, Math.ceil(body!.retryAfter!)) : 60);
+  if (body?.error === 'game_deleted') return tr('Эта партия удалена. Начните новую партию.');
   if (body?.error === 'request_too_long') return tr('Сократите запрос до {0} символов.', limits.requestCharacters);
   if (status === 413) return tr('Запрос слишком большой. Сократите текст и попробуйте снова.');
   if (body?.error === 'history_limit_reached') return tr('Достигнут предел истории этой партии. Сохранённые ходы доступны в истории; можно начать новую партию.');
