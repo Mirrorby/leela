@@ -62,11 +62,10 @@ jobs:
           fi
       - name: Deploy to Cloudflare
         if: steps.release.outputs.latest == 'true'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          workingDirectory: worker
-          command: deploy
+        # Use exactly the Wrangler installed and tested from our lockfile.
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       - name: Check Worker health
         if: steps.release.outputs.latest == 'true'
         run: |

@@ -60,3 +60,4 @@ jobs:
       - name: Verify repeat application
         run: npm run migrate:local
       - run: npm run build
+      - run: npm run test:local
