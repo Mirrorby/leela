@@ -18,6 +18,7 @@ import support from '../../../src/data/paymentSupport.json';
 import { readBoundedText, BodyTooLargeError } from '../http/limits';
 import { applyLegacyRefund, hasLegacyRefund, type LegacyRefund } from '../payments/legacyRefunds';
 import { logAnalyticsEvent } from '../analytics/repository';
+import { botLanguage } from './profile';
 
 const TELEGRAM_SECRET_HEADER = 'X-Telegram-Bot-Api-Secret-Token';
 const MINI_APP_URL = 'https://mirrorby.github.io/leela/';
@@ -48,7 +49,7 @@ export interface TelegramSuccessfulPayment {
 
 export interface TelegramPreCheckoutQuery {
   id: string;
-  from: { id: number };
+  from: { id: number; language_code?: string };
   currency: string;
   total_amount: number;
   invoice_payload: string;
@@ -104,7 +105,9 @@ async function answerPreCheckoutQuery(botToken: string, preCheckoutQueryId: stri
  * просто не пройдёт, пользователь может попробовать снова.
  */
 async function handlePreCheckoutQuery(botToken: string, _db: D1Database, query: TelegramPreCheckoutQuery): Promise<void> {
-  await answerPreCheckoutQuery(botToken, query.id, false, 'Оплата Stars отключена. Откройте Лилу и выберите оплату через Tribute.');
+  await answerPreCheckoutQuery(botToken, query.id, false, botLanguage(query.from.language_code) === 'ru'
+    ? 'Оплата Stars отключена. Откройте Лилу и выберите оплату через Tribute.'
+    : 'Stars payments are disabled. Open Leela and choose a Tribute payment.');
 }
 
 async function handleSuccessfulPayment(db: D1Database, message: TelegramMessage): Promise<void> {
@@ -181,13 +184,13 @@ async function sendTelegramMessage(
   // повторять доставку этого апдейта.
 }
 
-function russian(message: TelegramMessage): boolean { return /^ru(?:[-_]|$)/i.test(message.from?.language_code ?? 'en'); }
+function russian(message: TelegramMessage): boolean { return botLanguage(message.from?.language_code) === 'ru'; }
 
 async function handleStartCommand(botToken: string, message: TelegramMessage): Promise<void> {
   const ru = russian(message);
   const welcome = ru
-    ? 'Лила — доска трансформации. Брось кубик, пройди путь фишки от рождения до финиша и загляни в смысл каждой клетки.\n\nОткрой приложение кнопкой ниже. Помощь с оплатой: /paysupport.'
-    : 'Leela is a game of self-discovery. Roll the die, follow your journey from birth to the finish and explore the meaning of each square.\n\nOpen the app below. Payment help: /paysupport.';
+    ? 'Лила — игра самопознания. Сформулируй намерение, бросай кубик и исследуй смысл клеток на своём пути.\n\nДля новых аккаунтов: 1 бесплатная партия и 1 короткий ИИ-разбор. Дополнительные партии и полные ИИ-разборы доступны через Tribute.\n\nЯзык выбирается по настройке Telegram. В самой игре его можно переключить кнопкой с флагом.\n\nОткрой приложение кнопкой ниже. Помощь с оплатой: /paysupport.'
+    : 'Leela is a game of self-discovery. Set an intention, roll the die and explore the meaning of each square along your journey.\n\nNew accounts receive 1 free game and 1 short AI review. Additional games and full AI reviews are available through Tribute.\n\nThe language follows your Telegram setting. You can change it inside the game using the flag button.\n\nOpen the app below. Payment help: /paysupport.';
   await sendTelegramMessage(botToken, message.chat.id, welcome, {
     inline_keyboard: [[{ text: ru ? 'Открыть Лилу' : 'Open Leela', web_app: { url: MINI_APP_URL } }]],
   });

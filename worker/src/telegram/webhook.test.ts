@@ -50,6 +50,21 @@ describe('handleTelegramWebhook', () => {
     vi.restoreAllMocks();
   });
 
+  it.each([
+    ['ru', 'Лила — игра самопознания.', 'Открыть Лилу'],
+    ['ru-RU', 'Лила — игра самопознания.', 'Открыть Лилу'],
+    ['en', 'Leela is a game of self-discovery.', 'Open Leela'],
+    ['de', 'Leela is a game of self-discovery.', 'Open Leela'],
+    [undefined, 'Leela is a game of self-discovery.', 'Open Leela'],
+  ])('localizes /start for Telegram language %s', async (language_code, greeting, button) => {
+    await handleTelegramWebhook(req({ message: { message_id: 1, chat: { id: 42 }, from: { id: 42, language_code }, text: '/start' } }, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+    expect(body.text).toContain(greeting);
+    expect(body.text).toContain('Tribute');
+    expect(body.reply_markup.inline_keyboard[0][0].text).toBe(button);
+    expect(body.text).toContain(button === 'Open Leela' ? '1 free game and 1 short AI review' : '1 бесплатная партия и 1 короткий ИИ-разбор');
+  });
+
   it.each(['ru', 'en'])('answers /paysupport in %s with verified support links and a private account ID', async (language_code) => {
     const res = await handleTelegramWebhook(req({ update_id: 5, message: {
       message_id: 1, chat: { id: 42 }, from: { id: 42, language_code }, text: '/paysupport@LeelaBot',
@@ -151,6 +166,13 @@ describe('handleTelegramWebhook', () => {
 
 describe('retired Stars checkout', () => {
   afterEach(() => vi.restoreAllMocks());
+  it.each(['ru', 'en', 'de'])('localizes the retired checkout notice for %s', async (language_code) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
+    await handleTelegramWebhook(req({ pre_checkout_query: { id: 'old', from: { id: 42, language_code }, currency: 'XTR', total_amount: 1, invoice_payload: 'old' } }, WEBHOOK_SECRET), BOT_TOKEN, WEBHOOK_SECRET, createTestD1());
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string).error_message).toBe(language_code === 'ru'
+      ? 'Оплата Stars отключена. Откройте Лилу и выберите оплату через Tribute.'
+      : 'Stars payments are disabled. Open Leela and choose a Tribute payment.');
+  });
   it('rejects even a valid historical invoice without changing its transaction', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const db = createTestD1();

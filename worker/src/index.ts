@@ -4,6 +4,7 @@ import { isValidDiceValue, rollVirtualDice } from './game/diceEngine';
 import { getRuleset } from './game/rulesetLoader';
 import { validateInitData, extractInitData, type ValidatedInitData } from './telegram/validateInitData';
 import { handleTelegramWebhook } from './telegram/webhook';
+import { synchronizeBotProfile } from './telegram/profile';
 import { updateGame, getGameById, getGameByClientRequestId, createGameWithCharge, listGamesByUser, InvalidCursorError } from './games/repository';
 import { getEntitlements, trackSubscriptionExpiryIfNeeded, InsufficientBalanceError } from './payments/repository';
 import { handleTributeWebhook, listProductsWithTribute, type TributeEnv } from './payments/tribute';
@@ -21,6 +22,7 @@ import { consumeRateLimit, cleanExpiredRateLimits } from './http/rateLimit';
 
 export interface Env extends TributeEnv {
   DB: D1Database;
+  ENVIRONMENT?: string;
   // Секреты, добавляются через Cloudflare Dashboard (не в этом файле):
   BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
@@ -567,5 +569,8 @@ export default {
     await recoverExpiredAiReviews(env.DB);
     await retireStarsRenewals(env.DB, env.BOT_TOKEN);
     await cleanExpiredRateLimits(env.DB);
+    // Profile copy is installed once per content revision; failures do not
+    // interfere with payment recovery. Local smoke runs never change a bot.
+    if (env.ENVIRONMENT === 'production') await synchronizeBotProfile(env.DB, env.BOT_TOKEN);
   },
 };
