@@ -8,6 +8,10 @@ export interface TributeEnv {
   TRIBUTE_API_KEY?: string;
   /** JSON keyed by Tribute product ID: {"123":{"productId":"game_1","amount":19900,"currency":"RUB"}}. */
   TRIBUTE_PRODUCTS?: string;
+  CATALOG_PAYMENTS?: {
+    verifySignature(body: string, signature: string): Promise<boolean>;
+    receiveEvent(body: string): Promise<{ status: string }>;
+  };
 }
 
 interface Mapping {
@@ -229,7 +233,13 @@ export async function handleTributeWebhook(request: Request, env: TributeEnv): P
   try {
     const body = await readBody(request);
     if (!body) return reply({ error: 'body_too_large' }, 413);
-    if (!await validSignature(body, request.headers.get('trbt-signature'), env.TRIBUTE_API_KEY)) return reply({ error: 'invalid_signature' }, 401);
+    const signature = request.headers.get('trbt-signature') ?? '';
+    const originalBody = new TextDecoder().decode(body);
+    const leelaSigned = await validSignature(body, signature, env.TRIBUTE_API_KEY);
+    const catalogSigned = !leelaSigned && env.CATALOG_PAYMENTS
+      ? await env.CATALOG_PAYMENTS.verifySignature(originalBody, signature)
+      : false;
+    if (!leelaSigned && !catalogSigned) return reply({ error: 'invalid_signature' }, 401);
     let event: unknown;
     try { event = JSON.parse(new TextDecoder().decode(body)); } catch { return reject('invalid_json', 400, 'json'); }
     if (!record(event)) return reject('invalid_event', 400, 'envelope');
@@ -247,7 +257,10 @@ export async function handleTributeWebhook(request: Request, env: TributeEnv): P
       : null;
     // Inspect purchase fields only for products we handle. Legacy samples for
     // unrelated products may omit purchase_id and must not block URL setup.
-    if (!row && !mapping) return reply({ status: 'ignored', reason: 'unmapped_product' });
+    if (!row && !mapping) {
+      if (env.CATALOG_PAYMENTS) return reply(await env.CATALOG_PAYMENTS.receiveEvent(originalBody));
+      return reply({ status: 'ignored', reason: 'unmapped_product' });
+    }
     if (!positiveInteger(event.payload.purchase_id)) return reject('invalid_purchase', 400, 'purchase_id');
     // Refund payloads may omit the optional Telegram ID. A saved purchase is
     // already authoritative; never infer the identity for a new purchase.

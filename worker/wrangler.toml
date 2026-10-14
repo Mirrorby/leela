@@ -25,3 +25,9 @@ TRIBUTE_PRODUCTS = '{"161238":{"productId":"game_1","amount":159,"currency":"USD
 # Секреты (BOT_TOKEN, WEBHOOK_SECRET) сюда НЕ пишем — они добавляются
 # отдельно через Cloudflare Dashboard → Workers & Pages → leela-worker →
 # Settings → Variables and Secrets → Add → Encrypt, после первого деплоя.
+
+# Shared Tribute account: authenticated non-Leela purchases are routed privately.
+[[services]]
+binding = "CATALOG_PAYMENTS"
+service = "catalog-factory"
+entrypoint = "CatalogTributeBridge"
