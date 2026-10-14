@@ -286,4 +286,40 @@ describe('Tribute payments', () => {
     env.TRIBUTE_PRODUCTS = JSON.stringify({ 123: { productId: 'subscription_unlimited', amount: 49900, currency: 'RUB' } });
     expect((await send()).status).toBe(500);
   });
+  it('forwards only authenticated products outside Leela through the private catalog bridge', async () => {
+    const receiveEvent = vi.fn().mockResolvedValue({ status: 'ok' });
+    const verifySignature = vi.fn().mockResolvedValue(false);
+    env.CATALOG_PAYMENTS = { receiveEvent, verifySignature };
+    expect((await send('new_digital_product', { product_id: 999 })).status).toBe(200);
+    expect(receiveEvent).toHaveBeenCalledOnce();
+    expect(JSON.parse(receiveEvent.mock.calls[0][0]).payload.product_id).toBe(999);
+    expect(verifySignature).not.toHaveBeenCalled();
+    await send();
+    expect(receiveEvent).toHaveBeenCalledOnce();
+    expect((await getEntitlements(env.DB, '111')).paidGames).toBe(5);
+  });
+
+  it('accepts the second account key only after private signature verification', async () => {
+    const receiveEvent = vi.fn().mockResolvedValue({ status: 'ok' });
+    const verifySignature = vi.fn().mockResolvedValue(true);
+    env.CATALOG_PAYMENTS = { receiveEvent, verifySignature };
+    const body = JSON.stringify({ name: 'new_digital_product', payload: { ...payload, product_id: 999 } });
+    const request = new Request('https://leela-worker.example/tribute/webhook', { method: 'POST', headers: { 'trbt-signature': 'b'.repeat(64) }, body });
+    expect((await handleTributeWebhook(request, env)).status).toBe(200);
+    expect(verifySignature).toHaveBeenCalledWith(body, 'b'.repeat(64));
+    expect(receiveEvent).toHaveBeenCalledOnce();
+  });
+
+  it('never acknowledges a failed catalog delivery and rejects invalid shared signatures', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const receiveEvent = vi.fn().mockRejectedValue(new Error('temporary outage'));
+    const verifySignature = vi.fn().mockResolvedValue(false);
+    env.CATALOG_PAYMENTS = { receiveEvent, verifySignature };
+    expect((await send('new_digital_product', { product_id: 999 })).status).toBe(500);
+    const forged = new Request('https://leela-worker.example/tribute/webhook', { method: 'POST', headers: { 'trbt-signature': 'b'.repeat(64) }, body: JSON.stringify({ name: 'new_digital_product', payload }) });
+    expect((await handleTributeWebhook(forged, env)).status).toBe(401);
+    expect(receiveEvent).toHaveBeenCalledOnce();
+    expect((await send()).status).toBe(200);
+  });
+
 });
